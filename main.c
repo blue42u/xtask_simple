@@ -36,7 +36,9 @@ int main(void)
 	for(int i=0; i<NUM_SAMPLES; i++)
 	{
 		xtask_poll(id,&params);
+#ifdef VERBOSE
 		printf("Result : %d \n", *id);
+#endif
 	}
 
 	xtask_cleanup();

@@ -20,7 +20,7 @@ struct task_desc *execute_task(struct task_desc *task)
 void *worker_handler(void *data)
 {
 	struct mproc_state *mps = (struct mproc_state *) data;
-	struct task_desc *task;
+	struct task_desc *task = NULL;
 
 	pthread_barrier_wait(&mps->barrier);
 

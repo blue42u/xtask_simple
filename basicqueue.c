@@ -36,7 +36,9 @@ int BasicDequeue()
 #ifdef VERBOSE
 	printf("Removed %d from the queue\n", n->elem);
 #endif
-	return n->elem;
+	int r = n->elem;
+	free(n);
+	return r;
 }
 
 void BasicEnqueue_rq(int i)
@@ -67,5 +69,7 @@ int BasicDequeue_rq()
 #ifdef VERBOSE
 	printf("Removed %d from the result queue\n", n->elem);
 #endif
-	return n->elem;
+	int r = n->elem;
+	free(n);
+	return r;
 }
