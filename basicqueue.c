@@ -1,75 +1,58 @@
-#include "basicqueue.h"
+#include "queue.h"
+#include <semaphore.h>
+#include <stdlib.h>
 
-void InitBasicQueue(int size)
-{
-	CIRCLEQ_INIT(&head);
-	CIRCLEQ_INIT(&rq_head);
-	pthread_mutex_init(&lock, NULL);
+typedef struct node {
+	struct node* next;
+	xtask_task_t task;
+} node;
+
+static node* head;
+static node* tail;
+static sem_t lock;
+
+void initQueue(int size) {
+	head = NULL;
+	tail = NULL;
+	sem_init(&lock, 0, 1);
 }
 
-void BasicEnqueue(int i)
-{
-	struct basicentry* n = malloc(sizeof(struct basicentry));
-	n->elem = i;
-	pthread_mutex_lock(&lock);
-	CIRCLEQ_INSERT_TAIL(&head, n, entries);
-	pthread_mutex_unlock(&lock);
-#ifdef VERBOSE
-	printf("Added %d to the queue\n", n->elem);
-#endif
-}
-
-int BasicDequeue()
-{
-	// Remove a number from the queue
-	struct basicentry *n;
-	//Keep doing this until we dequeue an actual number, which also ensures queue is not empty for a successful dequeue.
-	do
-	{
-		pthread_mutex_lock(&lock);
-		n = CIRCLEQ_FIRST(&head);
-		CIRCLEQ_REMOVE(&head, head.cqh_first, entries);
-		pthread_mutex_unlock(&lock);
-		sched_yield();
+void freeQueue() {
+	sem_wait(&lock);
+	while(head != NULL) {
+		node* next = head->next;
+		free(head);
+		head = next;
 	}
-	while(n->elem == 0);
-#ifdef VERBOSE
-	printf("Removed %d from the queue\n", n->elem);
-#endif
-	int r = n->elem;
-	free(n);
-	return r;
+	sem_destroy(&lock);
 }
 
-void BasicEnqueue_rq(int i)
-{
-	struct basicentry* n = malloc(sizeof(struct basicentry));
-	n->elem = i;
-	pthread_mutex_lock(&lock);
-	CIRCLEQ_INSERT_TAIL(&rq_head, n, entries);
-	pthread_mutex_unlock(&lock);
-#ifdef VERBOSE
-	printf("Added %d to the result queue\n", n->elem);
-#endif
+void enqueue(const xtask_task_t* t) {
+	node* n = malloc(sizeof(node));
+	n->task = *t;
+	n->next = NULL;
+
+	sem_wait(&lock);
+	if(tail) tail->next = n;
+	else head = n;
+	tail = n;
+	sem_post(&lock);
 }
 
-int BasicDequeue_rq()
-{
-	// Remove a number from the queue
-	struct basicentry *n;
-	do
-	{
-		pthread_mutex_lock(&lock);
-		n = CIRCLEQ_FIRST(&rq_head);
-		CIRCLEQ_REMOVE(&rq_head, rq_head.cqh_first, entries);
-		pthread_mutex_unlock(&lock);
-		sched_yield();
+int dequeue(xtask_task_t* o) {
+	node* n = NULL;
+
+	sem_wait(&lock);
+	if(head) {
+		n = head;
+		head = head->next;
+		if(!head) tail = NULL;
 	}
-	while(n->elem == 0);
-#ifdef VERBOSE
-	printf("Removed %d from the result queue\n", n->elem);
-#endif
-	int r = n->elem;
-	free(n);
-	return r;
+	sem_post(&lock);
+
+	if(n) {
+		*o = n->task;
+		free(n);
+		return 1;
+	} else return 0;
 }

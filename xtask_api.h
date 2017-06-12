@@ -25,7 +25,8 @@ typedef struct {
 const xtask_task_t xtask_final;
 
 // Setup the XTask system. Should only be called once.
-void xtask_setup(void* (*init_state)(), int queue_size, int workers);
+void xtask_setup(void* (*init_state)(), void(*free_state)(void*),
+	int queue_size, int workers);
 
 // Cleanup the system, waits for the finisher to activate.
 void xtask_cleanup();

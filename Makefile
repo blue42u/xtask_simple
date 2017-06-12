@@ -1,7 +1,7 @@
 CC = gcc -g
 #CC = icc -mmic	#use this for to make an executable for Phi
-CFLAGS = -std=c99 -D_GNU_SOURCE -O2 -Wall -Wpedantic -Werror -fPIC #-DVERBOSE
-OBJECTS = basicqueue.o xtask_api.o worker.o
+CFLAGS = -std=c99 -D_GNU_SOURCE -O2 -Wall -Wpedantic -fPIC #-DVERBOSE
+OBJECTS = basicqueue.o xtask_api.o
 LDFLAGS = -lpthread
 
 all: libxtask.a main
