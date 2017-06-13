@@ -20,7 +20,6 @@ static void (*sfree)(void*);
 // Vars to inter-worker comms
 static sem_t running;
 static int complete;
-static sem_t lock;
 
 // Forward def
 static void* body(void*);
@@ -36,7 +35,6 @@ void xtask_setup(void* (*s_init)(), void (*s_free)(void*),
 	sfree = s_free;
 
 	sem_init(&running, 0, workers);
-	sem_init(&lock, 0, 1);
 	complete = 0;
 
 	for (int t = 0; t < workers; t++)
@@ -46,9 +44,6 @@ void xtask_setup(void* (*s_init)(), void (*s_free)(void*),
 static void notask(void* s, void* d, int isn) {}
 
 void xtask_cleanup() {
-	// Ensure one of the workers will now stop spinning.
-	enqueue(&(xtask_task_t){ notask, NULL, NULL });
-
 	// Lower the running by one, someone will set complete to 1.
 	if(sem_trywait(&running)) complete = 1;
 
@@ -56,7 +51,6 @@ void xtask_cleanup() {
 		pthread_join(threads[t], NULL);	// Wait for the threads to die.
 
 	sem_destroy(&running);
-	sem_destroy(&lock);
 	free(threads);
 	freeQueue();
 }
