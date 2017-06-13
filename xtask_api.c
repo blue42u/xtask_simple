@@ -5,10 +5,12 @@
 #include <stdio.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <errno.h>
 
 struct _xtask_aftern_internal {
 	sem_t lock;
 	int cnt;
+	xtask_task_t task;
 };
 
 // Vars for general state
@@ -18,7 +20,6 @@ static void* (*sinit)();
 static void (*sfree)(void*);
 
 // Vars to inter-worker comms
-static sem_t running;
 static int complete;
 
 // Forward def
@@ -34,23 +35,22 @@ void xtask_setup(void* (*s_init)(), void (*s_free)(void*),
 	sinit = s_init;
 	sfree = s_free;
 
-	sem_init(&running, 0, workers);
 	complete = 0;
 
 	for (int t = 0; t < workers; t++)
 		pthread_create(&threads[t], NULL, body, NULL);
 }
 
-static void notask(void* s, void* d, int isn) {}
+static void final(void* s, void* d) {
+	complete = 1;
+}
+
+const xtask_task_t xtask_final = { final, NULL, NULL };
 
 void xtask_cleanup() {
-	// Lower the running by one, someone will set complete to 1.
-	if(sem_trywait(&running)) complete = 1;
-
 	for (int t = 0; t < workers; t++)
 		pthread_join(threads[t], NULL);	// Wait for the threads to die.
 
-	sem_destroy(&running);
 	free(threads);
 	freeQueue();
 }
@@ -59,10 +59,11 @@ void xtask_push(const xtask_task_t* task) {
 	enqueue(task);
 }
 
-xtask_aftern_t xtask_aftern_create(int n) {
+xtask_aftern_t xtask_aftern_create(int n, const xtask_task_t* t) {
 	xtask_aftern_t an = malloc(sizeof(struct _xtask_aftern_internal));
 	sem_init(&an->lock, 0, 1);
 	an->cnt = n;
+	an->task = *t;
 	return an;
 }
 
@@ -71,29 +72,19 @@ static void* body(void* dummy) {
 	if(sinit) state = sinit();
 
 	xtask_task_t task;
-	int spin = 0;
 	while(!complete) {
 		if(dequeue(&task)) {
-			if(spin) sem_post(&running);
-			spin = 0;
-
-			int isn = 0;
+			if(task.task) task.task(state, task.data);
 			if(task.aftern) {
 				sem_wait(&task.aftern->lock);
 				task.aftern->cnt--;
 				if(task.aftern->cnt == 0) {
-					isn = 1;
+					xtask_push(&task.aftern->task);
 					sem_destroy(&task.aftern->lock);
 					free(task.aftern);
 				} else sem_post(&task.aftern->lock);
 			}
-			task.task(state, task.data, isn);
-		} else {
-			if(!spin) if(sem_trywait(&running)) complete = 1;
-			spin = 1;
-
-			sched_yield();
-		}
+		} else sched_yield();
 	}
 
 	if(sfree) sfree(state);

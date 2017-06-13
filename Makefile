@@ -4,7 +4,7 @@ CFLAGS = -std=c99 -D_GNU_SOURCE -O2 -Wall -Wpedantic -fPIC #-DVERBOSE
 OBJECTS = basicqueue.o xtask_api.o
 LDFLAGS = -lpthread
 
-all: libxtask.a main
+all: libxtask.a main fib
 
 libxtask.a: $(OBJECTS)
 	$(AR) rc libxtask.a $^
@@ -12,8 +12,11 @@ libxtask.a: $(OBJECTS)
 main: main.o libxtask.a
 	$(CC) $(CFLAGS) $+ $(LDFLAGS) -o $@
 
+fib: fib.o libxtask.a
+	$(CC) $(CFLAGS) $+ $(LDFLAGS) -o $@
+
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o main
+	rm -f *.o main fib
