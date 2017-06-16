@@ -12,11 +12,12 @@
 typedef struct _xtask_aftern_internal* xtask_aftern_t;
 
 // Task structure, to aid in pushing and such.
-// <task> is called with <data>. If <task> returns a true value, the task
-// given in <tail> will be pushed, with <tail.aftern> set to <aftern>.
-// Otherwise, <aftern> will be triggered.
+// <task> is called with the <state> of the worker (from `init_state`), <data>,
+// and the <aftern> it could trigger. <aftern> is triggered only if <task>
+// returns a true value, otherwise it is assumed that a task will be pushed with
+// <aftern> as its aftern.
 typedef struct {
-	int (*task)(void* state, void* data, xtask_task_t* tail);
+	int (*task)(void* state, void* data, xtask_aftern_t);
 	void* data;
 	xtask_aftern_t aftern;
 } xtask_task_t;
