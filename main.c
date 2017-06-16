@@ -7,14 +7,16 @@
 
 static int* res;
 
-void task(void* dummy, void* vd) {
+int task(void* dummy, void* vd, xtask_aftern_t d3) {
 	int d = *(int*)vd;
 	res[d] = d * 2;
+	return 1;
 }
 
-void print(void* dummy, void* dummy2) {
+int print(void* dummy, void* dummy2, xtask_aftern_t d3) {
 	printf("After n!\n");
 	xtask_push(&xtask_final);
+	return 1;
 }
 
 int main(void) {

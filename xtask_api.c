@@ -41,8 +41,9 @@ void xtask_setup(void* (*s_init)(), void (*s_free)(void*),
 		pthread_create(&threads[t], NULL, body, NULL);
 }
 
-static void final(void* s, void* d) {
+static int final(void* s, void* d, xtask_aftern_t t) {
 	complete = 1;
+	return 1;
 }
 
 const xtask_task_t xtask_final = { final, NULL, NULL };
@@ -74,8 +75,10 @@ static void* body(void* dummy) {
 	xtask_task_t task;
 	while(!complete) {
 		if(dequeue(&task)) {
-			if(task.task) task.task(state, task.data);
-			if(task.aftern) {
+			int tail = 1;
+			if(task.task)
+				tail = task.task(state, task.data, task.aftern);
+			if(tail && task.aftern) {
 				sem_wait(&task.aftern->lock);
 				task.aftern->cnt--;
 				if(task.aftern->cnt == 0) {

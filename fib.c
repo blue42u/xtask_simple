@@ -5,52 +5,51 @@
 typedef struct {
 	int n;
 	int* out;
-	xtask_aftern_t signal;
 } fibtask;
 
 typedef struct {
-	int* a;
-	int* b;
+	int* data;
 	int* out;
 } addtask;
 
-void add(void* dummy, void* task) {
+int add(void* dummy, void* task, xtask_aftern_t tail) {
 	addtask* t = task;
-	*t->out = *t->a + *t->b;
-	free(t->a);
-	free(t->b);
+	*t->out = t->data[0] + t->data[1];
+	free(t->data);
 	free(t);
+	return 1;	// Adds do things, so don't tail.
 }
 
-void recurse(void* dummy, void* task) {
+int recurse(void* dummy, void* task, xtask_aftern_t tail) {
 	fibtask* t = task;
 	if(t->n <= 1) {
 		*t->out = t->n;
-		if(t->signal) xtask_push(&(xtask_task_t){ NULL, NULL, t->signal });
+		free(t);
+		return 1;	// All done here, so don't tail
 	} else {
-		int* a = malloc(sizeof(int));
-		int* b = malloc(sizeof(int));
+		int* ab = malloc(2*sizeof(int));
 
+		// First create the after-n
 		addtask* at = malloc(sizeof(addtask));
-		*at = (addtask){ a, b, t->out };
-
+		*at = (addtask){ ab, t->out };
 		xtask_aftern_t an = xtask_aftern_create(2,
-			&(xtask_task_t){ add, at, t->signal });
+			&(xtask_task_t){ add, at, tail });
 
 		fibtask* ft1 = malloc(sizeof(fibtask));
-		*ft1 = (fibtask){ t->n-1, a, an };
+		*ft1 = (fibtask){ t->n-1, &ab[0] };
+		xtask_push(&(xtask_task_t){ recurse, ft1, an });
 
 		fibtask* ft2 = malloc(sizeof(fibtask));
-		*ft2 = (fibtask){ t->n-2, b, an };
+		*ft2 = (fibtask){ t->n-2, &ab[1] };
+		xtask_push(&(xtask_task_t){ recurse, ft2, an });
 
-		xtask_push(&(xtask_task_t){ recurse, ft1, NULL });
-		xtask_push(&(xtask_task_t){ recurse, ft2, NULL });
+		free(t);
+		return 0;	// Tail, we used the + as our replacement
 	}
-	free(t);
 }
 
-#define FIB_INDEX 20
-#define WORKERS 2
+#define FIB_INDEX 30
+#define WORKERS 6
 
 int main(void) {
 	xtask_setup(NULL, NULL, 10000, WORKERS);
@@ -59,8 +58,8 @@ int main(void) {
 
 	int out;
 	fibtask* t = malloc(sizeof(fibtask));
-	*t = (fibtask){ FIB_INDEX, &out, finish };
-	xtask_push(&(xtask_task_t){ recurse, t, NULL });
+	*t = (fibtask){ FIB_INDEX, &out };
+	xtask_push(&(xtask_task_t){ recurse, t, finish });
 
 	xtask_cleanup();
 
