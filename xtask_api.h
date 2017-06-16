@@ -12,10 +12,11 @@
 typedef struct _xtask_aftern_internal* xtask_aftern_t;
 
 // Task structure, to aid in pushing and such.
-// <task> is called with a true <is_nth> if it is the nth task with the same
-// <aftern> to be executed.
+// <task> is called with <data>. If <task> returns a true value, the task
+// given in <tail> will be pushed, with <tail.aftern> set to <aftern>.
+// Otherwise, <aftern> will be triggered.
 typedef struct {
-	void (*task)(void* state, void* data);
+	int (*task)(void* state, void* data, xtask_task_t* tail);
 	void* data;
 	xtask_aftern_t aftern;
 } xtask_task_t;
@@ -25,7 +26,7 @@ typedef struct {
 const xtask_task_t xtask_final;
 
 // Setup the XTask system. Should only be called once.
-void xtask_setup(void* (*init_state)(), void(*free_state)(void*),
+void xtask_setup(void* (*init_state)(), void (*free_state)(void*),
 	int queue_size, int workers);
 
 // Cleanup the system, waits for the finisher to activate.
