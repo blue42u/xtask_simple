@@ -48,17 +48,14 @@ int recurse(void* dummy, void* task, xtask_aftern_t tail) {
 	}
 }
 
-#define FIB_INDEX 30
-#define WORKERS 6
-
-int main(void) {
-	xtask_setup(NULL, NULL, 10000, WORKERS);
+int main(int argc, const char** argv) {
+	xtask_setup(NULL, NULL, 10000, atoi(argv[1]));
 
 	xtask_aftern_t finish = xtask_aftern_create(1, &xtask_final);
 
 	int out;
 	fibtask* t = malloc(sizeof(fibtask));
-	*t = (fibtask){ FIB_INDEX, &out };
+	*t = (fibtask){ atoi(argv[2]), &out };
 	xtask_push(&(xtask_task_t){ recurse, t, finish });
 
 	xtask_cleanup();
