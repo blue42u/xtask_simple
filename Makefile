@@ -19,4 +19,4 @@ fib: fib.o libxtask.a
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o main fib libxtask.a
+	rm -f *.o nap fib libxtask.a
