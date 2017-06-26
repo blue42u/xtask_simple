@@ -4,12 +4,12 @@ CFLAGS = -std=c99 -D_GNU_SOURCE -O2 -Wall -Wpedantic -fPIC #-DVERBOSE
 OBJECTS = basicstack.o xtask_api.o xtask.o
 LDFLAGS = -lpthread
 
-all: libxtask.a main fib
+all: libxtask.a nap fib
 
 libxtask.a: $(OBJECTS)
 	$(AR) rc libxtask.a $^
 
-main: main.o libxtask.a
+nap: nap.o libxtask.a
 	$(CC) $(CFLAGS) $+ $(LDFLAGS) -o $@
 
 fib: fib.o libxtask.a
@@ -19,4 +19,4 @@ fib: fib.o libxtask.a
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o main fib
+	rm -f *.o main fib libxtask.a
