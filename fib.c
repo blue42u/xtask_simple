@@ -1,68 +1,63 @@
-#include <stdlib.h>
+#include "xtask.h"
 #include <stdio.h>
-#include "xtask_api.h"
+#include <stdlib.h>
+#include <unistd.h>
 
 typedef struct {
+	xtask_task task;
 	int n;
 	int* out;
-} fibtask;
+} fibdata;
 
 typedef struct {
-	int* data;
+	xtask_task task;
+	fibdata a;
+	fibdata b;
+	int aout, bout;
 	int* out;
-} addtask;
+} fulldata;
 
-int add(void* dummy, void* task, xtask_aftern_t tail) {
-	addtask* t = task;
-	*t->out = t->data[0] + t->data[1];
-	free(t->data);
-	free(t);
-	return 1;	// Adds do things, so don't tail.
+static xtask_task* add(void* dummy, xtask_task* tdata) {
+#define data ((fulldata*)tdata)
+	*data->out = data->aout + data->bout;
+	free(data);
+	return NULL;
+#undef data
 }
 
-int recurse(void* dummy, void* task, xtask_aftern_t tail) {
-	fibtask* t = task;
-	if(t->n <= 1) {
-		*t->out = t->n;
-		free(t);
-		return 1;	// All done here, so don't tail
+static xtask_task* fib(void* dummy, xtask_task* tdata) {
+#define data ((fibdata*)tdata)
+	if(data->n <= 1) {
+		*data->out = data->n;
+		return NULL;
 	} else {
-		int* ab = malloc(2*sizeof(int));
-
-		// First create the after-n
-		addtask* at = malloc(sizeof(addtask));
-		*at = (addtask){ ab, t->out };
-		xtask_aftern_t an = xtask_aftern_create(2,
-			&(xtask_task_t){ add, at, tail });
-
-		fibtask* ft1 = malloc(sizeof(fibtask));
-		*ft1 = (fibtask){ t->n-1, &ab[0] };
-		xtask_push(&(xtask_task_t){ recurse, ft1, an });
-
-		fibtask* ft2 = malloc(sizeof(fibtask));
-		*ft2 = (fibtask){ t->n-2, &ab[1] };
-		xtask_push(&(xtask_task_t){ recurse, ft2, an });
-
-		free(t);
-		return 0;	// Tail, we used the + as our replacement
+		fulldata* fd = malloc(sizeof(fulldata));
+		*fd = (fulldata){
+			{add, XTASK_FATE_LEAF, &fd->a.task, NULL},
+			{{fib, 0, NULL, &fd->b.task}, data->n-1, &fd->aout},
+			{{fib, 0, NULL, NULL},        data->n-2, &fd->bout},
+			0, 0, data->out,
+		};
+		return &fd->task;
 	}
+#undef data
 }
 
-int main(int argc, const char** argv) {
-	xtask_setup(NULL, NULL, 10000, atoi(argv[1]));
+int main(int argc, char** argv) {
+	xtask_config xc = {0};
+	int fibindex = 20;
 
-	xtask_aftern_t finish = xtask_aftern_create(1, &xtask_final);
+	char c;
+	do {
+		c = getopt(argc, argv, "w:f:");
+		switch(c) {
+		case 'w': xc.workers = atoi(optarg); break;
+		case 'f': fibindex = atoi(optarg); break;
+		}
+	} while(c != -1);
 
 	int out;
-	fibtask* t = malloc(sizeof(fibtask));
-	*t = (fibtask){ atoi(argv[2]), &out };
-	xtask_push(&(xtask_task_t){ recurse, t, finish });
-
-	xtask_cleanup();
-
-	//printf("Out: %d\n", out);
-
-	return 0;
+	fibdata fd = {{fib, 0, NULL, NULL}, fibindex, &out};
+	xtask_run(&fd.task, xc);
+	printf("%d\n", out);
 }
-
-
