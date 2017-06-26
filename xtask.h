@@ -29,12 +29,14 @@ typedef enum xtask_fate {
 
 // <func> is called with the pointer of the task that contains it. The returned
 // task is the head of a task-tree (which forms the tail), or NULL (for leaves).
-typedef struct xtask_task {
+// The values in the structure may change before <func> is executed.
+typedef struct xtask_task xtask_task;
+struct xtask_task {
 	xtask_task* (*func)(void* state, xtask_task* data);
 	xtask_fate fate;
-	struct xtask_task* child;
-	struct xtask_task* sibling;
-} xtask_task;
+	xtask_task* child;
+	xtask_task* sibling;
+};
 
 // Using the given config, run the specified task-tree. Does not return before
 // the head task and all tailed tasks afterwards have completed execution.
