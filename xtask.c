@@ -39,7 +39,7 @@ static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
 		xtask_task* ct = tt->child;
 		xtask_task* st = tt->sibling;
 
-		tt->child = (xtask_task*)an;
+		tt->child = an;
 		if(ct) renqueue(ct, tt, ind, ans);
 		else enqueue(tt);
 
@@ -47,7 +47,7 @@ static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
 	}
 }
 
-static xtask_task* sent(void* s, xtask_task* d) { return NULL; }
+static void* sent(void* s, void* d) { return NULL; }
 
 // The two above, put together with a malloc. Returns the aftern array
 static aftern_tree* rpush(xtask_task* tt, aftern* an) {
@@ -56,7 +56,7 @@ static aftern_tree* rpush(xtask_task* tt, aftern* an) {
 
 	aftern_tree* at = malloc(sizeof(aftern_tree) + i*sizeof(aftern));
 	at->cnt = i;
-	at->sentinal = (xtask_task){ sent, 0, (xtask_task*)at, (xtask_task*)an };
+	at->sentinal = (xtask_task){ sent, 0, at, an };
 
 	i = 0;
 	renqueue(tt, &at->sentinal, &i, at->ans);
@@ -77,7 +77,7 @@ static void* worker(void* vcfg) {
 	while(1) {
 		xtask_task* t = dequeue();
 		if(t) {
-			aftern* an = (aftern*)t->child;
+			aftern* an = t->child;
 			xtask_task* tt = t->func(state, t);
 
 			#if VALIDATE
@@ -91,8 +91,8 @@ static void* worker(void* vcfg) {
 				if(sem_trywait(&an->sem) == 0) break;
 				if(an->t->func != sent) { enqueue(an->t); break; }
 				// Sentinal, cleanup an aftern-tree
-				aftern_tree* at = (aftern_tree*)an->t->child;
-				an = (aftern*)an->t->sibling;
+				aftern_tree* at = an->t->child;
+				an = an->t->sibling;
 				for(int i=0; i < at->cnt; i++)
 					sem_destroy(&at->ans[i].sem);
 				free(at);
@@ -108,7 +108,7 @@ static void* worker(void* vcfg) {
 	return NULL;
 }
 
-void xtask_run(xtask_task* tt, xtask_config cfg) {
+void xtask_run(void* tt, xtask_config cfg) {
 #define def(V, D) if(cfg.V == 0) cfg.V = D;
 	def(workers, sysconf(_SC_NPROCESSORS_ONLN))
 	def(max_leafing, 20)	// These numbers don't acutally matter, current

@@ -17,30 +17,28 @@ typedef struct {
 	int* out;
 } fulldata;
 
-static xtask_task* add(void* dummy, xtask_task* tdata) {
-#define data ((fulldata*)tdata)
+#define add ((xtask_func)_add)
+static void* _add(void* dummy, fulldata* data) {
 	*data->out = data->aout + data->bout;
 	free(data);
 	return NULL;
-#undef data
 }
 
-static xtask_task* fib(void* dummy, xtask_task* tdata) {
-#define data ((fibdata*)tdata)
+#define fib ((xtask_func)_fib)
+static fulldata* _fib(void* dummy, fibdata* data) {
 	if(data->n <= 1) {
 		*data->out = data->n;
 		return NULL;
 	} else {
 		fulldata* fd = malloc(sizeof(fulldata));
 		*fd = (fulldata){
-			{add, XTASK_FATE_LEAF, &fd->a.task, NULL},
-			{{fib, 0, NULL, &fd->b.task}, data->n-1, &fd->aout},
-			{{fib, 0, NULL, NULL},        data->n-2, &fd->bout},
+			{add, XTASK_FATE_LEAF, &fd->a, NULL},
+			{{fib, 0, NULL, &fd->b}, data->n-1, &fd->aout},
+			{{fib, 0, NULL, NULL},   data->n-2, &fd->bout},
 			0, 0, data->out,
 		};
-		return &fd->task;
+		return fd;
 	}
-#undef data
 }
 
 int main(int argc, char** argv) {
@@ -58,6 +56,6 @@ int main(int argc, char** argv) {
 
 	int out;
 	fibdata fd = {{fib, 0, NULL, NULL}, fibindex, &out};
-	xtask_run(&fd.task, xc);
+	xtask_run(&fd, xc);
 	printf("%d\n", out);
 }

@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <unistd.h>
 
-static xtask_task* nap(void* dummy, xtask_task* data) {
+static void* nap(void* dummy, void* data) {
 	return NULL;
 }
 
-static xtask_task* longnap(void* dummy, xtask_task* data) {
+static void* longnap(void* dummy, void* data) {
 	sleep(0);
 	return NULL;
 }
@@ -15,7 +15,7 @@ static xtask_task* longnap(void* dummy, xtask_task* data) {
 int main(int argc, char** argv) {
 	xtask_config xc = {0};
 	int samples = 1000;
-	xtask_task* (*n)(void*, xtask_task*) = nap;
+	void* (*n)(void*, void*) = nap;
 
 	char c;
 	do {
