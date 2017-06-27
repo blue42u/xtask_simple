@@ -27,6 +27,9 @@ typedef enum xtask_fate {
 // <fate> defines the fate of the task, which may provide some performance
 // benefits. Descriptions of the different fates are above.
 
+// <child> and <sibling> must be castable to a xtask_task*. Thus, if the user has
+// them point to a custom structure, an xtask_task must be the first member.
+
 // <func> is called with the pointer of the task that contains it. The returned
 // task is the head of a task-tree (which forms the tail), or NULL (for leaves).
 // The values in the structure may change before <func> is executed.
@@ -34,8 +37,8 @@ typedef struct xtask_task xtask_task;
 struct xtask_task {
 	xtask_task* (*func)(void* state, xtask_task* data);
 	xtask_fate fate;
-	xtask_task* child;
-	xtask_task* sibling;
+	void* child;
+	void* sibling;
 };
 
 // Using the given config, run the specified task-tree. Does not return before
