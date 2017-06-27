@@ -1,53 +1,55 @@
 #include "queue.h"
-#include <semaphore.h>
+#include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-typedef struct node {
-	struct node* next;
-	xtask_task_t task;
-} node;
+#define COUNT 0
 
-static node* head;
-static sem_t lock;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+// We reuse the sibling pointers to form the stack.
+static xtask_task* head;
+#if COUNT
+static unsigned long long taskcnt;	// Counter for tasks
+#endif
 
 void initQueue(int size) {
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+
+	// We have fast lock-unlock cycles, so allow things to speed up.
+	pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+
+	pthread_mutex_init(&lock, &attr);
 	head = NULL;
-	sem_init(&lock, 0, 1);
+
+	pthread_mutexattr_destroy(&attr);
 }
 
 void freeQueue() {
-	sem_wait(&lock);
-	while(head != NULL) {
-		node* next = head->next;
-		free(head);
-		head = next;
-	}
-	sem_destroy(&lock);
+	// We assume we only free the queue when it's empty, so don't bother with
+	// freeing the queue. Besides, its the user's job.
+	pthread_mutex_destroy(&lock);
+#if COUNT
+	fprintf(stderr, "Task Count: %lld\n", taskcnt);
+#endif
 }
 
-void enqueue(const xtask_task_t* t) {
-	node* n = malloc(sizeof(node));
-	n->task = *t;
-
-	sem_wait(&lock);
-	n->next = head;
-	head = n;
-	sem_post(&lock);
+void enqueue(xtask_task* t) {
+	pthread_mutex_lock(&lock);
+	t->sibling = head;
+	head = t;
+#if COUNT
+	taskcnt++;
+#endif
+	pthread_mutex_unlock(&lock);
 }
 
-int dequeue(xtask_task_t* o) {
-	node* n = NULL;
-
-	sem_wait(&lock);
-	if(head) {
-		n = head;
-		head = head->next;
-	}
-	sem_post(&lock);
-
-	if(n) {
-		*o = n->task;
-		free(n);
-		return 1;
-	} else return 0;
+xtask_task* dequeue() {
+	xtask_task* t;
+	pthread_mutex_lock(&lock);
+	t = head;
+	if(t) head = t->sibling;
+	pthread_mutex_unlock(&lock);
+	return t;
 }
