@@ -8,59 +8,53 @@
 
 sem_t finished;		// Signal to main thread that all is done.
 
-struct aftern {
+typedef struct {
 	sem_t sem;
 	xtask_task* t;
-};
+} aftern;
 
-struct aftern_tree {
+typedef struct {
 	int cnt;
 	xtask_task sentinal;
-	struct aftern ans[];
-};
+	aftern ans[];
+} aftern_tree;
 
 // Count the number of semaphores needed to queue up the given task-tree
 static void rcount(xtask_task* tt, int* cnt) {
-	if(tt) {
-		(*cnt)++;
-		for(; tt; tt = tt->sibling)
-			rcount(tt->child, cnt);
-	}
+	if(tt) (*cnt)++;
+	for(; tt; tt = tt->sibling) rcount(tt->child, cnt);
 }
 
 // Build the semaphores and queue up (the leaves of) the given task-tree
-static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, struct aftern* ans) {
-	if(tt) {
-		struct aftern* an = &ans[*ind];
-		(*ind)++;
+static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
+	aftern* an = &ans[*ind];
+	(*ind)++;
 
-		int cnt = -1;	// So that the last one can't wait
-		for(xtask_task* stt = tt; stt; stt = stt->sibling) cnt++;
-		sem_init(&an->sem, 0, cnt);
-		an->t = pt;
+	unsigned int cnt = 0;
+	for(xtask_task* stt = tt; stt; stt = stt->sibling) cnt++;
+	sem_init(&an->sem, 0, cnt-1);
+	an->t = pt;
 
-		while(tt) {
-			xtask_task* ct = tt->child;
-			xtask_task* st = tt->sibling;
+	while(tt) {
+		xtask_task* ct = tt->child;
+		xtask_task* st = tt->sibling;
 
-			tt->child = (xtask_task*)an;
-			if(ct) renqueue(ct, tt, ind, ans);
-			else enqueue(tt);
+		tt->child = (xtask_task*)an;
+		if(ct) renqueue(ct, tt, ind, ans);
+		else enqueue(tt);
 
-			tt = st;
-		}
+		tt = st;
 	}
 }
 
 static xtask_task* sent(void* s, xtask_task* d) { return NULL; }
 
 // The two above, put together with a malloc. Returns the aftern array
-static struct aftern_tree* rpush(xtask_task* tt, struct aftern* an) {
+static aftern_tree* rpush(xtask_task* tt, aftern* an) {
 	int i = 0;
 	rcount(tt, &i);
 
-	struct aftern_tree* at = malloc(sizeof(struct aftern_tree)
-		+ i*sizeof(struct aftern));
+	aftern_tree* at = malloc(sizeof(aftern_tree) + i*sizeof(aftern));
 	at->cnt = i;
 	at->sentinal = (xtask_task){ sent, 0, (xtask_task*)at, (xtask_task*)an };
 
@@ -83,7 +77,7 @@ static void* worker(void* vcfg) {
 	while(1) {
 		xtask_task* t = dequeue();
 		if(t) {
-			struct aftern* an = (struct aftern*)t->child;
+			aftern* an = (aftern*)t->child;
 			xtask_task* tt = t->func(state, t);
 
 			#if VALIDATE
@@ -93,21 +87,16 @@ static void* worker(void* vcfg) {
 			#endif
 
 			if(tt) rpush(tt, an);
-			else while(an && sem_trywait(&an->sem)) {
-				if(an->t->func == sent) {
-					// Sentinal, cleanup a aftern-tree
-					struct aftern_tree* at =
-						(struct aftern_tree*)an->t->child;
-					an = (struct aftern*)an->t->sibling;
-					for(int i=0; i < at->cnt; i++)
-						sem_destroy(&at->ans[i].sem);
-					free(at);
-				} else {
-					enqueue(an->t);
-					break;
-				}
+			else while(an) {
+				if(sem_trywait(&an->sem) == 0) break;
+				if(an->t->func != sent) { enqueue(an->t); break; }
+				// Sentinal, cleanup an aftern-tree
+				aftern_tree* at = (aftern_tree*)an->t->child;
+				an = (aftern*)an->t->sibling;
+				for(int i=0; i < at->cnt; i++)
+					sem_destroy(&at->ans[i].sem);
+				free(at);
 			}
-
 			if(!an) sem_post(&finished);
 		} else {
 			pthread_testcancel();
