@@ -26,7 +26,7 @@ static void rcount(xtask_task* tt, int* cnt) {
 }
 
 // Build the semaphores and queue up (the leaves of) the given task-tree
-static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
+static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans, int id) {
 	aftern* an = &ans[*ind];
 	(*ind)++;
 
@@ -40,8 +40,8 @@ static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
 		xtask_task* st = tt->sibling;
 
 		tt->child = an;
-		if(ct) renqueue(ct, tt, ind, ans);
-		else enqueue(tt);
+		if(ct) renqueue(ct, tt, ind, ans, id);
+		else enqueue(tt, id);
 
 		tt = st;
 	}
@@ -50,7 +50,7 @@ static void renqueue(xtask_task* tt, xtask_task* pt, int* ind, aftern* ans) {
 static void* sent(void* s, void* d) { return NULL; }
 
 // The two above, put together with a malloc. Returns the aftern array
-static aftern_tree* rpush(xtask_task* tt, aftern* an) {
+static aftern_tree* rpush(xtask_task* tt, aftern* an, int id) {
 	int i = 0;
 	rcount(tt, &i);
 
@@ -59,23 +59,28 @@ static aftern_tree* rpush(xtask_task* tt, aftern* an) {
 	at->sentinal = (xtask_task){ sent, 0, at, an };
 
 	i = 0;
-	renqueue(tt, &at->sentinal, &i, at->ans);
+	renqueue(tt, &at->sentinal, &i, at->ans, id);
 	return at;
 }
 
 static void empty(void* d) {}
 
+struct workerdata {
+	int id;
+	xtask_config* c;
+};
+
 static void* worker(void* vcfg) {
-	xtask_config* xc = vcfg;
+	struct workerdata* wd = vcfg;
 
 	int old;
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old);
-	void* state = xc->init ? xc->init() : NULL;
-	pthread_cleanup_push(xc->dest ? xc->dest : empty, state);
+	void* state = wd->c->init ? wd->c->init() : NULL;
+	pthread_cleanup_push(wd->c->dest ? wd->c->dest : empty, state);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &old);
 
 	while(1) {
-		xtask_task* t = dequeue();
+		xtask_task* t = dequeue(wd->id);
 		if(t) {
 			aftern* an = t->child;
 			xtask_task* tt = t->func(state, t);
@@ -86,10 +91,11 @@ static void* worker(void* vcfg) {
 					"LEAF fate!\n");
 			#endif
 
-			if(tt) rpush(tt, an);
+			if(tt) rpush(tt, an, wd->id);
 			else while(an) {
 				if(sem_trywait(&an->sem) == 0) break;
-				if(an->t->func != sent) { enqueue(an->t); break; }
+				if(an->t->func != sent) { enqueue(an->t,
+					wd->id); break; }
 				// Sentinal, cleanup an aftern-tree
 				aftern_tree* at = an->t->child;
 				an = an->t->sibling;
@@ -117,16 +123,19 @@ void xtask_run(void* tt, xtask_config cfg) {
 	def(dest, NULL)
 
 	// Queue up the first (and only, kind of) task-tree
-	initQueue(cfg.max_leafing + cfg.max_tailing);
-	rpush(tt, NULL);
+	initQueue(cfg.max_leafing, cfg.max_tailing, cfg.workers);
+	rpush(tt, NULL, -1);
 
 	// Setup the ending signal
 	sem_init(&finished, 0, 0);
 
 	// Spawn them threads
 	pthread_t threads[cfg.workers];
-	for(int i=0; i<cfg.workers; i++)
-		pthread_create(&threads[i], NULL, worker, &cfg);
+	struct workerdata tds[cfg.workers];
+	for(int i=0; i<cfg.workers; i++) {
+		tds[i] = (struct workerdata){ i, &cfg };
+		pthread_create(&threads[i], NULL, worker, &tds[i]);
+	}
 
 	// Wait for everyone to finish up
 	sem_wait(&finished);

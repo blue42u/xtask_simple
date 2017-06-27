@@ -13,7 +13,7 @@ static xtask_task* head;
 static unsigned long long taskcnt;	// Counter for tasks
 #endif
 
-void initQueue(int size) {
+void initQueue(int leafs, int tails, int threads) {
 	pthread_mutexattr_t attr;
 	pthread_mutexattr_init(&attr);
 
@@ -35,7 +35,7 @@ void freeQueue() {
 #endif
 }
 
-void enqueue(xtask_task* t) {
+void enqueue(xtask_task* t, int tid) {
 	pthread_mutex_lock(&lock);
 	t->sibling = head;
 	head = t;
@@ -45,7 +45,7 @@ void enqueue(xtask_task* t) {
 	pthread_mutex_unlock(&lock);
 }
 
-xtask_task* dequeue() {
+xtask_task* dequeue(int tid) {
 	xtask_task* t;
 	pthread_mutex_lock(&lock);
 	t = head;
