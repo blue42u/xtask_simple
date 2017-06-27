@@ -17,15 +17,15 @@ typedef struct {
 	int* out;
 } fulldata;
 
-#define add ((xtask_func)_add)
-static void* _add(void* dummy, fulldata* data) {
+static void* add(void* dummy, void* vdata) {
+	fulldata* data = vdata;
 	*data->out = data->aout + data->bout;
 	free(data);
 	return NULL;
 }
 
-#define fib ((xtask_func)_fib)
-static fulldata* _fib(void* dummy, fibdata* data) {
+static void* fib(void* dummy, void* vdata) {
+	fibdata* data = vdata;
 	if(data->n <= 1) {
 		*data->out = data->n;
 		return NULL;
