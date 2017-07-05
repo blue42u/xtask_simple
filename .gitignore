@@ -1,5 +1,2 @@
 *.o
-main
-libxtask.a
-fib
-nap
+libxtask-*.a
