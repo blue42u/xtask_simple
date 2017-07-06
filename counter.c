@@ -3,15 +3,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define COUNT 0
-
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 // We reuse the sibling pointers to form the stack.
 static xtask_task* head;
-#if COUNT
 static unsigned long long taskcnt;	// Counter for tasks
-#endif
 
 void initQueue(int leafs, int tails, int threads) {
 	pthread_mutexattr_t attr;
@@ -30,18 +26,14 @@ void freeQueue() {
 	// We assume we only free the queue when it's empty, so don't bother with
 	// freeing the queue. Besides, its the user's job.
 	pthread_mutex_destroy(&lock);
-#if COUNT
-	fprintf(stderr, "Task Count: %lld\n", taskcnt);
-#endif
+	fprintf(stderr, "TASKCOUNT %lld\n", taskcnt);
 }
 
 void enqueue(xtask_task* t, int tid) {
 	pthread_mutex_lock(&lock);
 	t->sibling = head;
 	head = t;
-#if COUNT
 	taskcnt++;
-#endif
 	pthread_mutex_unlock(&lock);
 }
 
