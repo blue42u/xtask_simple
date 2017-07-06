@@ -18,20 +18,17 @@ void freeQueue() {
 }
 
 void enqueue(xtask_task* t, int id) {
-	int mine = __sync_add_and_fetch(&top, 1);
-
-	if(mine > maxtop) printf("Overflow!\n");
-
-	while(!__sync_bool_compare_and_swap(&st[mine], NULL, t))
-		pthread_testcancel();
+	int mine = __sync_add_and_fetch(&top, 1) % maxtop;
+	do t->sibling = st[mine];
+	while(!__sync_bool_compare_and_swap(&st[mine], t->sibling, t));
 }
 
 xtask_task* dequeue(int id) {
-	int mine = __sync_fetch_and_sub(&top, 1);
-	xtask_task* t;
+	int mine = __sync_fetch_and_sub(&top, 1) % maxtop;
 	while(1) {
+		xtask_task* t;
 		while((t = st[mine]) == NULL) pthread_testcancel();
-		if(__sync_bool_compare_and_swap(&st[mine], t, NULL)) break;
+		if(__sync_bool_compare_and_swap(&st[mine], t, t->sibling))
+			return t;
 	}
-	return t;
 }
