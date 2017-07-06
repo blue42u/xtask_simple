@@ -79,35 +79,24 @@ static void* worker(void* vcfg) {
 	pthread_cleanup_push(wd->c->dest ? wd->c->dest : empty, state);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &old);
 
+	xtask_task* t;
 	while(1) {
-		xtask_task* t = dequeue(wd->id);
-		if(t) {
-			aftern* an = t->child;
-			xtask_task* tt = t->func(state, t);
+		t = dequeue(wd->id);
+		aftern* an = t->child;
+		xtask_task* tt = t->func(state, t);
 
-			#if VALIDATE
-			if(tt && (t->fate & XTASK_FATE_LEAF))
-				fprintf(stderr, "WARNING: Tailing task with "
-					"LEAF fate!\n");
-			#endif
-
-			if(tt) rpush(tt, an, wd->id);
-			else while(an) {
-				if(sem_trywait(&an->sem) == 0) break;
-				if(an->t->func != sent) { enqueue(an->t,
-					wd->id); break; }
-				// Sentinal, cleanup an aftern-tree
-				aftern_tree* at = an->t->child;
-				an = an->t->sibling;
-				for(int i=0; i < at->cnt; i++)
-					sem_destroy(&at->ans[i].sem);
-				free(at);
-			}
-			if(!an) sem_post(&finished);
-		} else {
-			pthread_testcancel();
-			pthread_yield();
+		if(tt) rpush(tt, an, wd->id);
+		else while(an) {
+			if(sem_trywait(&an->sem) == 0) break;
+			if(an->t->func != sent) { enqueue(an->t, wd->id); break; }
+			// Sentinal, cleanup an aftern-tree
+			aftern_tree* at = an->t->child;
+			an = an->t->sibling;
+			for(int i=0; i < at->cnt; i++)
+				sem_destroy(&at->ans[i].sem);
+			free(at);
 		}
+		if(!an) sem_post(&finished);
 	}
 
 	pthread_cleanup_pop(1);

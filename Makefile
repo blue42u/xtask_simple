@@ -3,7 +3,7 @@ CC = gcc -g
 CFLAGS = -std=c99 -D_GNU_SOURCE -O2 -Wall -Wpedantic -fPIC #-DVERBOSE
 LDFLAGS = -lpthread
 
-all: libxtask-jigstack.a libxtask-counter.a
+all: libxtask-jigstack.a libxtask-counter.a libxtask-oneatom.a
 
 libxtask-%.a: xtask.o %.o
 	$(AR) rc $@ $^

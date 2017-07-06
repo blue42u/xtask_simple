@@ -36,19 +36,22 @@ void enqueue(xtask_task* t, int id) {
 xtask_task* dequeue(int id) {
 	// Walk our way around the rim, fitting in with the jig.
 	xtask_task* t;
-	for(int i=id; i >= 0; i--) {
-		sem_wait(&locks[i]);
-		t = heads[i];
-		if(t) heads[i] = t->sibling;
-		sem_post(&locks[i]);
-		if(t) return t;
+	while(1) {
+		for(int i=id; i >= 0; i--) {
+			sem_wait(&locks[i]);
+			t = heads[i];
+			if(t) heads[i] = t->sibling;
+			sem_post(&locks[i]);
+			if(t) return t;
+		}
+		for(int i=workers-1; i > id; i--) {
+			sem_wait(&locks[i]);
+			t = heads[i];
+			if(t) heads[i] = t->sibling;
+			sem_post(&locks[i]);
+			if(t) return t;
+		}
+		pthread_testcancel();
+		pthread_yield();
 	}
-	for(int i=workers-1; i > id; i--) {
-		sem_wait(&locks[i]);
-		t = heads[i];
-		if(t) heads[i] = t->sibling;
-		sem_post(&locks[i]);
-		if(t) return t;
-	}
-	return NULL;
 }

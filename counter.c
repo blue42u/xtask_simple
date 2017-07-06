@@ -39,9 +39,13 @@ void enqueue(xtask_task* t, int tid) {
 
 xtask_task* dequeue(int tid) {
 	xtask_task* t;
-	pthread_mutex_lock(&lock);
-	t = head;
-	if(t) head = t->sibling;
-	pthread_mutex_unlock(&lock);
-	return t;
+	while(1) {
+		pthread_mutex_lock(&lock);
+		t = head;
+		if(t) head = t->sibling;
+		pthread_mutex_unlock(&lock);
+		if(t) return t;
+		pthread_testcancel();
+		pthread_yield();
+	}
 }
