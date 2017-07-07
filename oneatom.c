@@ -20,6 +20,7 @@ void freeQueue() {
 void enqueue(xtask_task* t, int id) {
 	// Grab a valid index that could be dequeued
 	int mine = __sync_add_and_fetch(&top, 1) % maxtop;
+	if(mine < 0) mine += maxtop;
 	// Try to add it to the little stack in that slot
 	do t->sibling = st[mine];
 	while(!__sync_bool_compare_and_swap(&st[mine], t->sibling, t));
@@ -28,6 +29,7 @@ void enqueue(xtask_task* t, int id) {
 xtask_task* dequeue(int id) {
 	// Grab a valid index that will be filled (by enqueue)
 	int mine = __sync_fetch_and_sub(&top, 1) % maxtop;
+	if(mine < 0) mine += maxtop;
 	while(1) {
 		xtask_task* t;
 		// Wait for it to have something

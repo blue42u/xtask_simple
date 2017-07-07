@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <sched.h>
 
 static int workers;
 static xtask_task** heads;
@@ -52,6 +53,6 @@ xtask_task* dequeue(int id) {
 			if(t) return t;
 		}
 		pthread_testcancel();
-		pthread_yield();
+		sched_yield();
 	}
 }
