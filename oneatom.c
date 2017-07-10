@@ -1,4 +1,5 @@
 #include "queue.h"
+#include "common.h"
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -10,6 +11,7 @@ typedef struct {
 } Q;
 
 void* initQueue(xtask_config* cfg) {
+	defaults(cfg, (xtask_config){0, 40, 20, NULL, NULL});
 	Q* q = malloc(sizeof(Q));
 	q->maxtop = cfg->max_leafing + cfg->max_tailing - 1;
 	q->st = calloc(q->maxtop + 1, sizeof(xtask_task*));
