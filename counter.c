@@ -41,22 +41,20 @@ static void rpush(queue* q, xtask_task* tt, xtask_task* p) {
 	tt->child = p;
 }
 
-void push(void* vq, int tid, xtask_task* tt, xtask_task* prev) {
-	queue* q = vq;
-	tt->sibling = NULL;
-	rpush(q, tt, prev ? prev->child : NULL);
+void push(void* vq, int tid, xtask_task* tt, xtask_task prev) {
+	for(xtask_task* t = tt; t; t = t->sibling)
+		rpush(vq, tt, prev.child);
 }
 
-int leaf(void* vq, int tid, xtask_task* t) {
-	queue* q = vq;
-	t = t->child;
+int leaf(void* vq, int tid, xtask_task prev) {
+	xtask_task* t = prev.child;
 	if(!t) return 1;
 	t->fate--;
 	if(t->fate > 0) return 0;
 	xtask_task* p = t->child;
 	t->child = NULL;
 	t->sibling = NULL;
-	rpush(q, t, p);
+	rpush(vq, t, p);
 	return 0;
 }
 

@@ -10,12 +10,13 @@ void* initQueue(xtask_config*);
 // Clean up a Queue. Called only after all the work is done.
 void freeQueue(void*);
 
-// Push a task-tree into the Queue.
-void push(void*, int tid, xtask_task* tt, xtask_task* parent);
+// Push a task-tree into the Queue. If this was the result of tailing, <prev> is
+// the xtask_task that came before, otherwise {0}.
+void push(void*, int tid, xtask_task* tt, xtask_task prev);
 
 // Leaf a task, which had previously been on the Queue.
 // Returns whether to kill all the workers now.
-int leaf(void*, int tid, xtask_task* t);
+int leaf(void*, int tid, xtask_task prev);
 
 // Pop a single task from the Queue. Should always return a task, and
 // provide cancellation points during any spinning.

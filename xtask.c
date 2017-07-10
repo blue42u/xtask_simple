@@ -6,14 +6,13 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-sem_t finished;		// Signal to main thread that all is done.
-
 static void empty(void* d) {}
 
 struct workerdata {
 	int id;
 	xtask_config* c;
 	void* q;
+	sem_t* finished;
 };
 
 static void* worker(void* vcfg) {
@@ -30,10 +29,8 @@ static void* worker(void* vcfg) {
 		xtask_task orig = *t;
 		xtask_task* tt = t->func(state, t);
 
-		if(tt) {
-			tt->sibling = NULL;
-			push(wd->q, wd->id, tt, &orig);
-		} else if(leaf(wd->q, wd->id, &orig)) sem_post(&finished);
+		if(tt) push(wd->q, wd->id, tt, orig);
+		else if(leaf(wd->q, wd->id, orig)) sem_post(wd->finished);
 	}
 
 	pthread_cleanup_pop(1);
@@ -43,17 +40,17 @@ static void* worker(void* vcfg) {
 void xtask_run(void* tt, xtask_config cfg) {
 	// Queue up the first (and only, kind of) task-tree
 	void* q = initQueue(&cfg);
-	((xtask_task*)tt)->sibling = NULL;
-	push(q, 0, tt, NULL);
+	push(q, 0, tt, (xtask_task){NULL, 0, NULL, NULL});
 
 	// Setup the ending signal
+	sem_t finished;
 	sem_init(&finished, 0, 0);
 
 	// Spawn them threads
 	pthread_t threads[cfg.workers];
 	struct workerdata tds[cfg.workers];
 	for(int i=0; i<cfg.workers; i++) {
-		tds[i] = (struct workerdata){ i, &cfg, q };
+		tds[i] = (struct workerdata){ i, &cfg, q, &finished };
 		pthread_create(&threads[i], NULL, worker, &tds[i]);
 	}
 
