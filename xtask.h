@@ -37,7 +37,7 @@ typedef enum xtask_fate {
 typedef struct xtask_task xtask_task;
 struct xtask_task {
 	void* (*func)(void* state, void* data);
-	xtask_fate fate;
+	int fate;
 	void* child;
 	void* sibling;
 };
