@@ -5,12 +5,13 @@
 #include <stdio.h>
 
 typedef struct {
-	xtask_task* st;
+	xtask_task* head;
+	xtask_task* second;
 } Q;
 
 void* initQueue(xtask_config* cfg) {
 	Q* q = malloc(sizeof(Q));
-	q->st = NULL;
+	*q = (Q){NULL, NULL};
 	return q;
 }
 
@@ -36,8 +37,8 @@ static void rpush(Q* q, xtask_task* t, xtask_task* p) {
 		// Set the after-n
 		t->child = p;
 		// Push it onto the stack
-		do t->sibling = q->st;
-		while(!__sync_bool_compare_and_swap(&q->st, t->sibling, t));
+		do t->sibling = q->second;
+		while(!__sync_bool_compare_and_swap(&q->second, t->sibling, t));
 	}
 }
 
@@ -62,12 +63,18 @@ int leaf(void* vq, int tid, xtask_task prev) {
 
 xtask_task* pop(void* vq, int tid) {
 	Q* q = vq;
-	xtask_task* t = NULL;
+	xtask_task* t;
 	do {
 		pthread_testcancel();
-		// Try and pop from the stack at our index
-		do t = q->st;
-		while(t && !__sync_bool_compare_and_swap(&q->st, t, t->sibling));
+		// Remove the head, claiming our prize
+		do t = q->head;
+		while(!__sync_bool_compare_and_swap(&q->head, t, NULL));
+		// Move a new item down on second
+		xtask_task* s;
+		do s = q->second;
+		while(s && !__sync_bool_compare_and_swap(&q->second, s, s->sibling));
+		// Replace the head with the item moved down
+		while(!__sync_bool_compare_and_swap(&q->head, NULL, s));
 	} while(!t);
 	return t;
 }
