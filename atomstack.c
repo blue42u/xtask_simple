@@ -7,11 +7,12 @@
 typedef struct {
 	xtask_task* head;
 	xtask_task* second;
+	int heads;
 } Q;
 
 void* initQueue(xtask_config* cfg) {
 	Q* q = malloc(sizeof(Q));
-	*q = (Q){NULL, NULL};
+	*q = (Q){NULL, NULL, 0};
 	return q;
 }
 
@@ -43,20 +44,27 @@ static void rpush(Q* q, xtask_task* t, xtask_task* p) {
 }
 
 void push(void* vq, int tid, xtask_task* tt, xtask_task prev) {
+	Q* q = vq;
+	int extra = prev.func ? -1 : 0;
+	for(xtask_task* t=tt; t; t = t->sibling) extra++;
+	xtask_task* p = prev.child;
+	if(extra > 0) __sync_fetch_and_add(p ? &p->fate : &q->heads, extra);
+
 	while(tt) {
 		xtask_task* next = tt->sibling;
-		rpush(vq, tt, prev.child);
+		rpush(q, tt, p);
 		tt = next;
 	}
 }
 
 int leaf(void* vq, int tid, xtask_task prev) {
+	Q* q = vq;
 	xtask_task* t = prev.child;
-	if(!t) return 1;
+	if(!t) return __sync_sub_and_fetch(&q->heads, 1) == 0;
 	if(__sync_sub_and_fetch(&t->fate, 1) == 0) {
 		xtask_task* p = t->child;
 		t->child = t->sibling = NULL;
-		rpush(vq, t, p);
+		rpush(q, t, p);
 	}
 	return 0;
 }
