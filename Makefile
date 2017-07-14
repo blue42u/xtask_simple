@@ -6,7 +6,7 @@ LDFLAGS = -lpthread
 
 all: libxtask-counter.a libxtask-oneatom.a libxtask-jigstack.a libxtask-atomstack.a
 
-libxtask-%.a: xtask.o %.o
+libxtask-%.a: xdata.o xtask.o %.o
 	$(AR) rc $@ $^
 
 %.o: %.c
