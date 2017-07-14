@@ -34,13 +34,13 @@ void xdata_prepare(xdata_state*, xdata_task, int ninputs, void* inputs[],
 	int noutputs, void* outputs[]);
 
 // Macros for xdata_prepare. Usage: xd_p(state, func, {in1...}, {out1...});
-#define xd_prep(S, F, INS, OUTS) ({ \
-	void* ins[] = INS; \
-	void* outs[] = OUTS; \
-	xdata_prepare(S, F, sizeof(ins)/sizeof(ins[0]), ins, \
-		sizeof(outs)/sizeof(outs[0]), outs); \
+#define xd_prep(S, F, I, O) (xdata_prepare(S, F, \
+		sizeof(I)/sizeof(I[0]), I, \
+		sizeof(O)/sizeof(O[0]), O))
+#define xd_P(F, I, O) ({ \
+	void *i[] = I, *o[] = O; \
+	xd_prep(XDATA_STATE, F, i, o); \
 })
-#define xd_P(F, I, O) xd_prep(XDATA_STATE, F, I, O)
 
 // Run a Task (and subTasks) from outside a Task. Returns once the outputs have
 // been written. Assumes the inputs have been written.
@@ -48,10 +48,13 @@ void xdata_run(xdata_task, xtask_config, int ninputs, void* inputs[],
 	int noutputs, void* outputs[]);
 
 // Macro for xdata_run. Usage: xd_r(f, config, {in1...}, {out1...});
-#define xd_run(F, C, INS, OUTS) ({ \
-	void* ins[] = INS; \
-	void* outs[] = OUTS; \
-	xdata_run(F, C, sizeof(ins)/sizeof(ins[0]), ins, \
-		sizeof(outs)/sizeof(outs[0]), outs); \
+#define xd_run(F, C, I, O) (xdata_run(F, C, \
+		sizeof(I)/sizeof(I[0]), I, \
+		sizeof(O)/sizeof(O[0]), O))
+#define xd_R(F, C, I, O) ({ \
+	void *i[] = I, *o[] = O; \
+	xd_run(F, C, i, o); \
 })
-#define xd_R(F, C, I, O) xd_run(F, C, I, O)
+
+// Macro for xd_P and xd_R, to make it nicer to pass in stuff
+#define xd_L(X, ...) ((void*[]){X,## __VA_ARGS__})
