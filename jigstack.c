@@ -45,7 +45,7 @@ static void rpush(Q* q, int id, xtask_task* tt, aftern* an, aftern* ans, int* in
 		int cnt = 0;
 		for(xtask_task* c = tt->child; c; c = c->sibling) cnt++;
 
-		aftern* myan = &ans[*ind++];
+		aftern* myan = &ans[(*ind)++];
 		sem_init(&myan->cnt, 0, cnt-1);
 		myan->size = 0;
 		myan->t = tt;
