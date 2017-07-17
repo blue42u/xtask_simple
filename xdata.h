@@ -16,6 +16,10 @@
 #ifndef XDATA_H_
 #define XDATA_H_
 
+// Names for some of the parameters for tasks. Can be re-def'd without issue.
+#define XD_STATE _xdata_state_param
+#define XD_OUT _xdata_out_param
+
 // The internal state of the currently running task. Do not transfer between tasks.
 typedef struct xdata_state xdata_state;
 
