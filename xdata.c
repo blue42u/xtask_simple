@@ -6,15 +6,12 @@
 typedef struct ftask ftask;
 
 typedef struct {
-	size_t offset, size;
-	ftask* writer;
+	size_t offset, size, writer;
 	int numreaders;
 } line;
 
 struct xdata_state {
-	void* out;
-	int nlines, lused;
-	line* lines;
+	ftask* t;
 	size_t size, used;
 	void* store;
 };
@@ -41,92 +38,97 @@ typedef struct {
 } ctask;
 static void* ctaskfunc(void*, void*);
 
-xdata_line xdata_create(xdata_state* s, size_t size) {
+static inline size_t suballoc(xdata_state* s, size_t size) {
 	if(s->used+size > s->size) {
 		while(s->used+size > s->size) s->size *= 2;
 		s->store = realloc(s->store, s->size);
 	}
-	if(s->lused == s->nlines) {
-		s->nlines *= 2;
-		s->lines = realloc(s->lines, s->nlines*sizeof(line));
-	}
-	s->lines[s->lused] = (line){ s->used, size, NULL, 0 };
-	s->lused += 1;
 	s->used += size;
-	return s->lused-1;
+	return s->used-size;
 }
 
-void xdata_setdata(xdata_state* s, xdata_line l, void* d) {
-	if(l == 0) memcpy(s->out, d, s->lines[l].size);
-	else memcpy(s->store+s->lines[l].offset, d, s->lines[l].size);
+xdata_line xdata_create(xdata_state* s, size_t size) {
+	size_t off = suballoc(s, size);
+	size_t loff = suballoc(s, sizeof(line));
+	*((line*)(s->store+loff)) = (line){ off, size, 0, 0 };
+	return loff;
+}
+
+void xdata_setdata(xdata_state* s, xdata_line lf, void* d) {
+	line* l = s->store + lf;
+	if(lf == 0) memcpy(s->t->out.d, d, s->t->outsize);
+	else memcpy(s->store + l->offset, d, l->size);
 }
 
 void xdata_prepare(xdata_state* s, xdata_task f, xdata_line out,
 	int ni, xdata_line in[]) {
 
-	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
-	*t = (ftask){ {ftaskfunc, 0, NULL, NULL},
-		f, s->lines[out].size, {.l=out}, ni };
+	ftask* t;
+	size_t toff = suballoc(s, sizeof(ftask) + ni*sizeof(t->in[0]));
+	t = s->store + toff;
+	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, 0, {.l=out}, ni };
 	for(int i=0; i<ni; i++) t->in[i].l = in[i];
-	s->lines[out].writer = t;
+	((line*)(s->store+out))->writer = toff;
 }
 
 void xdata_run(xdata_task f, xtask_config xc, size_t osize, void* out,
 	int ni, void* in[]) {
 
 	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
-	*t = (ftask){ {ftaskfunc, 0, NULL, NULL},
-		f, osize, {.d=out}, ni };
+	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, osize, {.d=out}, ni };
 	for(int i=0; i<ni; i++) t->in[i].d = in[i];
 	xtask_run(t, xc);
+	free(t);
 }
 
 static void maketree(xdata_state* s, ftask* t, xtask_task* p) {
 	t->task.sibling = p->child;
 	p->child = t;
 
-	xdata_line o = t->out.l;
-	if(o == 0) t->out.d = s->out;
-	else t->out.d = s->store + s->lines[o].offset;
+	if(t->out.l == 0) {
+		t->out.d = s->t->out.d;
+		t->outsize = s->t->outsize;
+	} else {
+		line* o = s->store + t->out.l;
+		t->out.d = s->store + o->offset;
+		t->outsize = o->size;
+	}
 	for(int i=0; i < t->ni; i++) {
-		line* l = &s->lines[t->in[i].l];
+		line* l = s->store + t->in[i].l;
 		if(++l->numreaders > 1) {
 			fprintf(stderr, "Tried to tail with a non-tree graph!\n");
 			exit(1);
 		}
 		t->in[i].d = s->store + l->offset;
-		if(l->writer) maketree(s, l->writer, &t->task);
+		if(l->writer > 0) maketree(s, s->store + l->writer, &t->task);
 	}
 }
 
 static void* ftaskfunc(void* xs, void* vft) {
 	ftask* t = vft;
-	xdata_state s = { t->out.d,
-		1, 1, malloc(sizeof(line)),
-		sizeof(int), 0, malloc(sizeof(int)) };
-	s.lines[0] = (line){ 0, t->outsize, NULL, 0 };
+	xdata_state s = { t, sizeof(line), sizeof(line), malloc(sizeof(line)) };
+	line* o = s.store;
+	*o = (line){0,0,0,0};
 
-	void** ins = malloc(t->ni*sizeof(void*));
+	void* ins[t->ni];
 	for(int i=0; i < t->ni; i++) ins[i] = t->in[i].d;
 	t->func(xs, &s, 0, ins);
-	free(ins);
 
 	void* tail = NULL;
-	if(s.lines[0].writer) {
-		ctask* c = malloc(sizeof(ctask));
+	o = s.store;
+	if(o->writer > 0) {
+		size_t coff = suballoc(&s, sizeof(ctask));
+		ctask* c = s.store + coff;
 		*c = (ctask){{ctaskfunc, XTASK_FATE_LEAF, NULL, NULL}, s.store};
-		maketree(&s, s.lines[0].writer, &c->task);
+		maketree(&s, s.store + o->writer, &c->task);
 		tail = c;
 	} else free(s.store);
 
-	free(s.lines);
-	free(t);
 	return tail;
 }
 
 static void* ctaskfunc(void* xs, void* vct) {
 	ctask* t = vct;
 	free(t->store);
-	free(t);
 	return NULL;
 }

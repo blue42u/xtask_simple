@@ -24,8 +24,8 @@
 typedef struct xdata_state xdata_state;
 
 // A "line" that connects tasks, whose data can be written or read by new tasks.
-// Don't try to create more than 4M of these
-typedef unsigned long xdata_line;
+// Don't try to create too many of these
+typedef size_t xdata_line;
 
 // The function signature for a task. Number of inputs is assumed to be known.
 typedef void (*xdata_task)(void* xstate, xdata_state*,
