@@ -4,59 +4,76 @@
 // XData is a layer on top of XTask which provides a dataflow-style interface to
 // the underlying task-tree system.
 
-// Nomenclature: xdata_* for all types and functions, xd_* for macros.
+// There are two styles for the API, the xdata_* style and the xd_* style.
+// The xdata_* style is more mundane and works stably in all case.
+// The xd_* style is shorter and is for end-user code written on XData.
+// Often the xd_* style will be implemented as a macro using the xdata_* style.
 
-// The shorthand macros (i.e. those of the form xd_<letter>) require that
-// XDATA_STATE be defined to the variable name of the xdata_state for the task.
+// The xd_* macros require that XD_STATE be defined and expand to the name of
+// the xdata_state* variable in the context of usage. xd_O and xd_F also require
+// that XD_OUT expand to the xdata_line* argument of the task.
 
-// Internal structure to allow for proper thread-safety. Do not use after the
-// execution of the corrosponding task is complete.
+#ifndef XDATA_H_
+#define XDATA_H_
+
+// The internal state of the currently running task. Do not transfer between tasks.
 typedef struct xdata_state xdata_state;
 
-// Create a new piece of data, of the given size. For use inside Tasks.
-void* xdata_create(xdata_state*, size_t size);
+// A "line" that connects tasks, whose data can be written or read by new tasks.
+typedef struct xdata_line xdata_line;
 
-// Macros for xdata_create. Defines a variable that contains a pointer to a new
-// piece of data, casted to the given type. Usage: xd_create(state, type, name);
-#define xd_create(S, T, N) T* N = (T*)xdata_create(S, sizeof(T))
-#define xd_C(T, N) xd_create(XDATA_STATE, T, N)
-
-// The function signature for Tasks. It is assumed the number of inputs and outputs
-// for the Task is defined ahead of time. If a Task completes without preparing
-// a Task to write to a particular output, it is assumed to have written that
-// output.
+// The function signature for a task. Number of inputs is assumed to be known.
 typedef void (*xdata_task)(void* xstate, xdata_state*,
-	void* inputs[], void* outputs[]);
+	xdata_line* out, void* in[]);
 
-// Prepare a Task to be executed. It will execute once all of its inputs have
-// been written.
-void xdata_prepare(xdata_state*, xdata_task, int ninputs, void* inputs[],
-	int noutputs, void* outputs[]);
+// Usage: xd_F(<name>, <xstate>, <in>) (; or {...})
+// Define a task, using the defined names.
+#define xd_F(N, X, I) void N (void* X, xdata_state* XD_STATE, \
+	xdata_line* XD_OUT, void* I[])
 
-// Macros for xdata_prepare. Usage: xd_p(state, func, {in1...}, {out1...});
-#define xd_prep(S, F, I, O) (xdata_prepare(S, F, \
-		sizeof(I)/sizeof(void*), I, \
-		sizeof(O)/sizeof(void*), O))
-#define xd_P(F, I, O) ({ \
-	void *_i[] = I, *_o[] = O; \
-	xdata_prepare(XDATA_STATE, F, sizeof(_i)/sizeof(_i[0]), _i, \
-		sizeof(_o)/sizeof(_o[0]), _o); \
+// Create a line, with the given size of data.
+xdata_line* xdata_create(xdata_state*, size_t);
+
+// Copy some data into a line, useful for constants and size-markers.
+void xdata_setdata(xdata_state*, xdata_line*, void*);
+
+// Usage: xd_C(<type>, <var>); or xd_CV(<type>, <var>, <membervalues>...);
+// Defines a line <var> with enough space to hold <type>. If specified,
+// <membervalues> are wrapped in braces and form the initializer for the line.
+#define xd_C(T, V) xdata_line* V = xdata_create((XD_STATE), sizeof(T));
+#define xd_CV(T, V, ...) xd_C(T, V); ({ \
+	T _val = {__VA_ARGS__}; \
+	xdata_setdata((XD_STATE), (V), &_val); \
 })
 
-// Run a Task (and subTasks) from outside a Task. Returns once the outputs have
-// been written. Assumes the inputs have been written.
-void xdata_run(xdata_task, xtask_config, int ninputs, void* inputs[],
-	int noutputs, void* outputs[]);
-
-// Macro for xdata_run. Usage: xd_r(f, config, {in1...}, {out1...});
-#define xd_run(F, C, I, O) (xdata_run(F, C, \
-		sizeof(I)/sizeof(void*), I, \
-		sizeof(O)/sizeof(void*), O))
-#define xd_R(F, C, I, O) ({ \
-	void *_i[] = I, *_o[] = O; \
-	xdata_run(F, C, sizeof(_i)/sizeof(_i[0]), _i, \
-		sizeof(_o)/sizeof(_o[0]), _o); \
+// Usage: xd_O(<type>, <membervalues>...);
+// Like xd_CV, but uses the output line instead of creating a line.
+#define xd_O(T, ...) ({ \
+	T _val = {__VA_ARGS__}; \
+	xdata_setdata((XD_STATE), (XD_OUT), &_val); \
 })
 
-// Macro for xd_P and xd_R, to make it nicer to pass in stuff
-#define xd_L(X, ...) {X,## __VA_ARGS__}
+// Prepare a task, which will be spawned and executed sometime in the future.
+void xdata_prepare(xdata_state*, xdata_task, xdata_line* out,
+	int numinputs, xdata_line* in[]);
+
+// Usage: xd_P(<out>, <func>, <in>...); or xd_P0(<out>, <func>);
+// Prepares a task, <in>s and <out> are line references (ie. XD_PREFIX##V)
+#define xd_P(O, F, ...) ({ \
+	xdata_line* _ins[] = {__VA_ARGS__}; \
+	xdata_prepare((XD_STATE), (F), (O), sizeof(_ins)/sizeof(_ins[0]), _ins); \
+})
+#define xd_P0(O, F) ( xdata_prepare((XD_STATE), (F), (O), 0, NULL) )
+
+// From outside of a task, fire up the system and run a task.
+void xdata_run(xdata_task, xtask_config, size_t, void* out, int numin, void* in[]);
+
+// Usage: xd_R(<cfg>, <out>, <func>, <in>...); or xd_R0(<cfg>, <out>, <func>);
+// Runs a task from outside the system, <in>s and <out> are pointers to data.
+#define xd_R(C, O, F, ...) ({ \
+	void* _ins[] = {__VA_ARGS__}; \
+	xdata_run((F), (C), sizeof(*O), (O), sizeof(_ins)/sizeof(_ins[0]), _ins); \
+})
+#define xd_R0(C, O, F) ( xdata_run((F), (C), (O), 0, NULL) )
+
+#endif

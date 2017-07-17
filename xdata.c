@@ -1,102 +1,119 @@
 #include "xdata.h"
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
-// Different structures for things
+struct xdata_state {
+	void* out;
+	xdata_line* lines;
+	size_t size, used;
+	void* store;
+};
+
 typedef struct {
 	xtask_task task;
 	xdata_task func;
-	int frommain, ni, no;
-	void* data[];
+	size_t outsize;
+	void* out;
+	int ni;
+	void* in[];
 } ftask;
+static void* ftaskfunc(void*, void*);
 
-typedef struct {
+struct xdata_line {
+	ssize_t offset;
+	size_t size;
 	ftask* writer;
-	void* mem;
-	ftask* reader;
-} dataent;
+	int numreaders;
 
-struct xdata_state {
-	int size, used;
-	dataent* conn;
+	xdata_line* next;
 };
 
-static inline dataent* getent(xdata_state* s, void* m) {
-	for(int i=0; i < s->used; i++)
-		if(s->conn[i].mem == m) return &s->conn[i];
-	return NULL;
-}
+typedef struct {
+	xtask_task task;
+	void* store;
+} ctask;
+static void* ctaskfunc(void*, void*);
 
-static inline dataent* newent(xdata_state* s, void* m) {
-	if(s->size == s->used) {
-		s->size *= 2;
-		s->conn = realloc(s->conn, s->size*sizeof(dataent));
+xdata_line* xdata_create(xdata_state* s, size_t size) {
+	if(s->used+size > s->size) {
+		while(s->used+size > s->size) s->size *= 2;
+		s->store = realloc(s->store, s->size);
 	}
-	return &s->conn[s->used++];
+	xdata_line* l = malloc(sizeof(xdata_line));
+	*l = (xdata_line){ s->used, size, NULL, 0, s->lines };
+	s->lines = l;
+	s->used += size;
+	return l;
 }
 
-void* xdata_create(xdata_state* s, size_t size) {
-	void* m = malloc(size);
-	*newent(s, m) = (dataent){NULL, m, NULL};
-	return m;
+void xdata_setdata(xdata_state* s, xdata_line* l, void* d) {
+	if(l->offset < 0) memcpy(s->out, d, l->size);
+	else memcpy(s->store+l->offset, d, l->size);
 }
 
-static void* taskfunc(void* xstate, void* vt) {
-	ftask* t = vt;
-	// Setup the state for this task
-	xdata_state s = {t->ni+t->no+10, t->ni+t->no};
-	s.conn = malloc(s.size*sizeof(dataent));
-	for(int i=0; i < t->ni+t->no; i++)
-		s.conn[i] = (dataent){NULL, t->data[i], NULL};
+void xdata_prepare(xdata_state* s, xdata_task f, xdata_line* out,
+	int ni, xdata_line* in[]) {
 
-	// Run the task
-	t->func(xstate, &s, t->data, &t->data[t->ni]);
+	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
+	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, out->size, out, ni };
+	for(int i=0; i<ni; i++) t->in[i] = in[i];
+	out->writer = t;
+}
 
-	// Clean up unused inputs, if not app-managed memory
-	if(!t->frommain)
-		for(int i=0; i < t->ni; i++)
-			if(s.conn[i].reader == NULL) free(s.conn[i].mem);
+void xdata_run(xdata_task f, xtask_config xc, size_t osize, void* out,
+	int ni, void* in[]) {
 
-	// Gather together the new tasks
-	ftask* tail = NULL;
-	for(int i=t->ni; i < t->ni+t->no; i++) {
-		if(s.conn[i].writer) {
-			s.conn[i].writer->task.sibling = tail;
-			tail = s.conn[i].writer;
+	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
+	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, osize, out, ni };
+	for(int i=0; i<ni; i++) t->in[i] = in[i];
+	xtask_run(t, xc);
+}
+
+static void maketree(xdata_state* s, ftask* t, xtask_task* p) {
+	t->task.sibling = p->child;
+	p->child = t;
+
+	xdata_line* o = t->out;
+	if(o->offset < 0) t->out = s->out;
+	else t->out = s->store + o->offset;
+	for(int i=0; i < t->ni; i++) {
+		xdata_line* l = t->in[i];
+		if(++l->numreaders > 1) {
+			fprintf(stderr, "Tried to tail with a non-tree graph!\n");
+			exit(1);
 		}
+		t->in[i] = s->store + l->offset;
+		if(l->writer) maketree(s, l->writer, &t->task);
 	}
+}
 
-	// Free the task and state, and tail with the new tasks
+static void* ftaskfunc(void* xs, void* vft) {
+	ftask* t = vft;
+	xdata_line out = {-1, t->outsize, NULL, 0};
+	xdata_state s = { t->out, NULL, sizeof(int), 0, malloc(sizeof(int)) };
+	t->func(xs, &s, &out, t->in);
+
+	void* tail = NULL;
+	if(out.writer) {
+		ctask* c = malloc(sizeof(ctask));
+		*c = (ctask){{ctaskfunc, XTASK_FATE_LEAF, NULL, NULL}, s.store};
+		maketree(&s, out.writer, &c->task);
+		tail = c;
+	} else free(s.store);
+
+	while(s.lines) {
+		xdata_line* n = s.lines->next;
+		free(s.lines);
+		s.lines = n;
+	}
 	free(t);
-	free(s.conn);
 	return tail;
 }
 
-void xdata_prepare(xdata_state* s, xdata_task f, int ni, void* in[],
-	int no, void* ot[]) {
-
-	ftask* t = malloc(sizeof(ftask)+(ni+no)*sizeof(void*));
-	*t = (ftask){{taskfunc, 0, NULL, NULL}, f, 0, ni, no};
-	for(int i=0; i<no; i++) {
-		getent(s, ot[i])->writer = t;
-		t->data[ni+i] = ot[i];
-	}
-	for(int i=0; i<ni; i++) {
-		t->data[i] = in[i];
-		dataent* de = getent(s, in[i]);
-		de->reader = t;
-		if(de->writer) {
-			de->writer->task.sibling = t->task.child;
-			t->task.child = de->writer;
-		}
-	}
-}
-
-void xdata_run(xdata_task f, xtask_config xc, int ni, void* in[],
-	int no, void* ot[]) {
-
-	ftask* t = malloc(sizeof(ftask)+(ni+no)*sizeof(void*));
-	*t = (ftask){{taskfunc, 0, NULL, NULL}, f, 1, ni, no};
-	for(int i=0; i<ni; i++) t->data[i] = in[i];
-	for(int i=0; i<no; i++) t->data[ni+i] = ot[i];
-	xtask_run(t, xc);
+static void* ctaskfunc(void* xs, void* vct) {
+	ctask* t = vct;
+	free(t->store);
+	free(t);
+	return NULL;
 }
