@@ -11,7 +11,7 @@
 
 // The xd_* macros require that XD_STATE be defined and expand to the name of
 // the xdata_state* variable in the context of usage. xd_O and xd_F also require
-// that XD_OUT expand to the xdata_line* argument of the task.
+// that XD_OUT expand to the xdata_line argument of the task.
 
 #ifndef XDATA_H_
 #define XDATA_H_
@@ -20,27 +20,28 @@
 typedef struct xdata_state xdata_state;
 
 // A "line" that connects tasks, whose data can be written or read by new tasks.
-typedef struct xdata_line xdata_line;
+// Don't try to create more than 4M of these
+typedef unsigned long xdata_line;
 
 // The function signature for a task. Number of inputs is assumed to be known.
 typedef void (*xdata_task)(void* xstate, xdata_state*,
-	xdata_line* out, void* in[]);
+	xdata_line out, void* in[]);
 
 // Usage: xd_F(<name>, <xstate>, <in>) (; or {...})
 // Define a task, using the defined names.
 #define xd_F(N, X, I) void N (void* X, xdata_state* XD_STATE, \
-	xdata_line* XD_OUT, void* I[])
+	xdata_line XD_OUT, void* I[])
 
 // Create a line, with the given size of data.
-xdata_line* xdata_create(xdata_state*, size_t);
+xdata_line xdata_create(xdata_state*, size_t);
 
 // Copy some data into a line, useful for constants and size-markers.
-void xdata_setdata(xdata_state*, xdata_line*, void*);
+void xdata_setdata(xdata_state*, xdata_line, void*);
 
 // Usage: xd_C(<type>, <var>); or xd_CV(<type>, <var>, <membervalues>...);
 // Defines a line <var> with enough space to hold <type>. If specified,
 // <membervalues> are wrapped in braces and form the initializer for the line.
-#define xd_C(T, V) xdata_line* V = xdata_create((XD_STATE), sizeof(T));
+#define xd_C(T, V) xdata_line V = xdata_create((XD_STATE), sizeof(T));
 #define xd_CV(T, V, ...) xd_C(T, V); ({ \
 	T _val = {__VA_ARGS__}; \
 	xdata_setdata((XD_STATE), (V), &_val); \
@@ -54,13 +55,13 @@ void xdata_setdata(xdata_state*, xdata_line*, void*);
 })
 
 // Prepare a task, which will be spawned and executed sometime in the future.
-void xdata_prepare(xdata_state*, xdata_task, xdata_line* out,
-	int numinputs, xdata_line* in[]);
+void xdata_prepare(xdata_state*, xdata_task, xdata_line out,
+	int numinputs, xdata_line in[]);
 
 // Usage: xd_P(<out>, <func>, <in>...); or xd_P0(<out>, <func>);
 // Prepares a task, <in>s and <out> are line references (ie. XD_PREFIX##V)
 #define xd_P(O, F, ...) ({ \
-	xdata_line* _ins[] = {__VA_ARGS__}; \
+	xdata_line _ins[] = {__VA_ARGS__}; \
 	xdata_prepare((XD_STATE), (F), (O), sizeof(_ins)/sizeof(_ins[0]), _ins); \
 })
 #define xd_P0(O, F) ( xdata_prepare((XD_STATE), (F), (O), 0, NULL) )
