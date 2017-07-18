@@ -5,25 +5,23 @@
 
 typedef struct ftask ftask;
 
-typedef struct line {
-	struct line* next;
+struct _xdata_line {
+	xdata_line next;
 	ftask* writer;
 	int numreaders;
 
 	size_t size;
 	char data[];
-} line;
+};
 
 struct xdata_state {
-	int nlines;
-	line* head;
-	line* tail;
+	xdata_line head;
 };
 
 struct ftask {
 	xtask_task task;
 	xdata_task func;
-	line* out;
+	xdata_line out;
 	int ni;
 	void* in[];
 };
@@ -31,45 +29,35 @@ static void* ftaskfunc(void*, void*);
 
 typedef struct {
 	xtask_task task;
-	line* lines;
+	xdata_line lines;
 } ctask;
 static void* ctaskfunc(void*, void*);
 
 xdata_line xdata_create(xdata_state* s, size_t size) {
-	line* l = malloc(sizeof(line)+size);
-	*l = (line){ NULL, NULL, 0, size };
-	s->tail->next = l;
-	s->tail = l;
-	printf("Creating %p\n", l);
-	return s->nlines++;
-}
-
-static inline line* getlin(xdata_state* s, xdata_line li) {
-	line* l = s->head;
-	for(int i=0; i<li; i++) l = l->next;
+	xdata_line l = malloc(sizeof(struct _xdata_line)+size);
+	*l = (struct _xdata_line){ s->head, NULL, 0, size };
+	s->head = l;
 	return l;
 }
 
-void xdata_setdata(xdata_state* s, xdata_line li, void* d) {
-	line* l = getlin(s, li);
+void xdata_setdata(xdata_state* s, xdata_line l, void* d) {
 	memcpy(l->data, d, l->size);
 }
 
-void xdata_prepare(xdata_state* s, xdata_task f, xdata_line out,
+void xdata_prepare(xdata_state* s, xdata_task f, xdata_line o,
 	int ni, xdata_line in[]) {
 
-	line* o = getlin(s, out);
 	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
 	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, o, ni };
-	for(int i=0; i<ni; i++) t->in[i] = getlin(s, in[i]);
+	for(int i=0; i<ni; i++) t->in[i] = in[i];
 	o->writer = t;
 }
 
 void xdata_run(xdata_task f, xtask_config xc, size_t osize, void* out,
 	int ni, void* in[]) {
 
-	line* l = malloc(sizeof(line) + osize);
-	*l = (line){ NULL, NULL, 0, osize };
+	xdata_line l = malloc(sizeof(struct _xdata_line) + osize);
+	*l = (struct _xdata_line){ NULL, NULL, 0, osize };
 	ftask* t = malloc(sizeof(ftask) + ni*sizeof(void*));
 	*t = (ftask){ {ftaskfunc, 0, NULL, NULL}, f, l, ni };
 	for(int i=0; i<ni; i++) t->in[i] = in[i];
@@ -84,7 +72,7 @@ static void maketree(xdata_state* s, ftask* t, xtask_task* p) {
 	p->child = t;
 
 	for(int i=0; i < t->ni; i++) {
-		line* l = t->in[i];
+		xdata_line l = t->in[i];
 		if(++(l->numreaders) > 1) {
 			fprintf(stderr, "Tried to tail with a non-tree graph!\n");
 			exit(1);
@@ -96,19 +84,18 @@ static void maketree(xdata_state* s, ftask* t, xtask_task* p) {
 
 static void* ftaskfunc(void* xs, void* vft) {
 	ftask* t = vft;
-	xdata_state s = { 1, t->out, t->out };
-	t->out->writer = NULL;
-	t->out->next = NULL;
+	xdata_state s = { NULL };
 
-	t->func(xs, &s, 0, t->in);
+	t->out->writer = NULL;
+	t->func(xs, &s, t->out, t->in);
 
 	void* tail = t->out->writer;
 	if(tail) {
 		xtask_task tt = {ctaskfunc, XTASK_FATE_LEAF, NULL, NULL};
 		maketree(&s, tail, &tt);
-		if(s.head->next) {
+		if(s.head) {
 			ctask* c = malloc(sizeof(ctask));
-			*c = (ctask){tt, s.head->next};
+			*c = (ctask){tt, s.head};
 			tail = c;
 		}
 	}
@@ -118,10 +105,9 @@ static void* ftaskfunc(void* xs, void* vft) {
 
 static void* ctaskfunc(void* xs, void* vct) {
 	ctask* t = vct;
-	line* l = t->lines;
+	xdata_line l = t->lines;
 	while(l) {
-		line* n = l->next;
-		printf("Cleaning up %p\n", l);
+		xdata_line n = l->next;
 		free(l);
 		l = n;
 	}
