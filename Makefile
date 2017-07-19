@@ -11,7 +11,7 @@ all: libxtask-counter.a libxtask-oneatom.a \
 libxtask-%.a: xdata.o xtask.o %.o
 	$(AR) rc $@ $^
 
-xtask.so: lua.o libxtask-jigstack.a
+xtask.so: lua.o ldata.o libxtask-jigstack.a
 	$(CC) $^ -shared -o $@ $(LDFLAGS)
 
 %.o: src/%.c

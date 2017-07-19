@@ -1,2 +1,3 @@
 *.o
-libxtask-*.a
+*.a
+*.so

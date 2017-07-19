@@ -186,9 +186,22 @@ static int l_run(lua_State* L) {
 	return lua_gettop(L);
 }
 
+// .pack(...) -> <packedstring>
+static int l_pack(lua_State* L) {
+	size_t sz = 0;
+	for(int i=1; i <= lua_gettop(L); i++) sz += ld_size(L, i);
+	lua_pushinteger(L, sz);
+	return 1;
+}
+
+luaL_Reg funcs[] = {
+	{"run", l_run},
+	{"pack", l_pack},
+	//{"unpack", l_unpack},
+	{NULL, NULL}
+};
+
 int luaopen_xtask(lua_State* L) {
-	lua_newtable(L);
-	lua_pushcfunction(L, l_run);
-	lua_setfield(L, -2, "run");
+	luaL_newlib(L, funcs);
 	return 1;
 }
