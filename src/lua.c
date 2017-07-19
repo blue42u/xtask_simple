@@ -188,9 +188,12 @@ static int l_run(lua_State* L) {
 
 // .pack(...) -> <packedstring>
 static int l_pack(lua_State* L) {
-	size_t sz = 0;
-	for(int i=1; i <= lua_gettop(L); i++) sz += ld_size(L, i);
-	lua_pushinteger(L, sz);
+	int num = lua_gettop(L);
+	printf("Stack:\n");
+	size_t sz = ld_size(L, num);
+	luaL_Buffer b;
+	ld_pack(L, num, luaL_buffinitsize(L, &b, sz));
+	luaL_pushresultsize(&b, sz);
 	return 1;
 }
 
