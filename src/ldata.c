@@ -12,8 +12,8 @@
 #define LD_TABLE 8	// lua_Unsigned cnt; ld_sml meta; {ld_sml k, v}[cnt];
 typedef unsigned char ld_type;
 
-static int islarge(lua_State* L) {
-	switch(lua_type(L, -1)) {
+static int islarge(lua_State* L, int ind) {
+	switch(lua_type(L, ind)) {
 	case LUA_TNIL:
 	case LUA_TBOOLEAN:
 	case LUA_TNUMBER:
@@ -59,7 +59,11 @@ static int _reader_##N(lua_State* L, const void* p, size_t sz, void* ud) { \
 	(_##N##_FUNCTION(L, ud, p, sz)); \
 	return 0; \
 } \
-static void stage_##N(lua_State* L, void* ud) { \
+static void stage_##N(lua_State* L, int tab, void* ud) { \
+	tab = lua_absindex(L, tab); \
+	lua_pushvalue(L, -1); \
+	lua_pushboolean(L, 1); \
+	lua_settable(L, tab); \
 	switch(lua_type(L, -1)) { \
 	case LUA_TNIL: \
 	case LUA_TBOOLEAN: \
@@ -68,14 +72,23 @@ static void stage_##N(lua_State* L, void* ud) { \
 	case LUA_TSTRING: (_##N##_STRING(L, ud)); break; \
 	case LUA_TTABLE: \
 		if(lua_getmetatable(L, -1)) { \
-			if(islarge(L)) stage_##N(L, ud); \
+			lua_gettable(L, tab); \
+			if(islarge(L, -2) && !lua_toboolean(L, -1)) \
+				stage_##N(L, tab, ud); \
 			lua_pop(L, 1); \
 		} \
 		lua_pushnil(L); \
 		while(lua_next(L, -2) != 0) { \
-			if(islarge(L)) stage_##N(L, ud); \
+			lua_pushvalue(L, -1); \
+			lua_gettable(L, tab); \
+			if(islarge(L, -2) && !lua_toboolean(L, -1)) \
+				stage_##N(L, tab, ud); \
+			lua_pop(L, 2); \
+			lua_pushvalue(L, -1); \
+			lua_gettable(L, tab); \
+			if(islarge(L, -2) && !lua_toboolean(L, -1)) \
+				stage_##N(L, tab, ud); \
 			lua_pop(L, 1); \
-			if(islarge(L)) stage_##N(L, ud); \
 		} \
 		(_##N##_TABLE(L, ud)); \
 		if(lua_getmetatable(L, -1)) { \
@@ -84,9 +97,11 @@ static void stage_##N(lua_State* L, void* ud) { \
 		} \
 		lua_pushnil(L); \
 		while(lua_next(L, -2) != 0) { \
+			lua_pushvalue(L, -2); \
 			_sml_##N(L, ud); \
 			lua_pop(L, 1); \
 			_sml_##N(L, ud); \
+			lua_pop(L, 1); \
 		} \
 		break; \
 	case LUA_TFUNCTION: { \
@@ -95,7 +110,10 @@ static void stage_##N(lua_State* L, void* ud) { \
 		lua_getinfo(L, ">u", &ar); \
 		for(int i=1; i <= ar.nups; i++) { \
 			lua_getupvalue(L, -1, i); \
-			if(islarge(L)) stage_##N(L, ud); \
+			lua_pushvalue(L, -1); \
+			lua_gettable(L, tab); \
+			if(islarge(L, -2) && !lua_toboolean(L, -1)) \
+				stage_##N(L, tab, ud); \
 			lua_pop(L, 1); \
 		} \
 		(_##N##_FUNCTION_HEAD(L, ud, ar.nups)); \
@@ -130,10 +148,11 @@ STAGE(getsize)
 
 size_t ld_size(lua_State* L, int ind) {
 	int top = lua_gettop(L);
+	lua_newtable(L);
 	lua_pushvalue(L, ind);
 	size_t sz = 0;
-	stage_getsize(L, &sz);
-	lua_pop(L, 1);
+	stage_getsize(L, -2, &sz);
+	lua_pop(L, 2);
 	printf("ld_size top: %d from %d\n", lua_gettop(L), top);
 	return sz;
 }
