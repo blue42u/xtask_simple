@@ -1,4 +1,4 @@
-#include "ldata.h"
+#include "lua.h"
 
 static inline const void* read_size(size_t size, const void** space) {
 	const void* ret = *space;
@@ -8,7 +8,8 @@ static inline const void* read_size(size_t size, const void** space) {
 #define read(T) *(T*)read_size(sizeof(T), data)
 #define next(T, S) (T*)read_size(S, data)
 
-static void pushread(lua_State* L, int idtab, const void** data, const void* st);
+static int pushread(lua_State* L, int idtab, const void** data,
+	const void* st, int suball);
 
 int ld_unpack(lua_State* L, const void* space) {
 	// Header: unsigned int numobj;
@@ -22,33 +23,36 @@ int ld_unpack(lua_State* L, const void* space) {
 	lua_pushglobaltable(L);
 	lua_seti(L, -2, 0);
 	for(int i=1; i<=n; i++) {
-		pushread(L, -1, data, st);
+		pushread(L, -1, data, st, 0);
 		lua_seti(L, -2, i);
 	}
 	int tab = lua_absindex(L, -1);
 
 	n = read(unsigned int);
-	for(int i=0; i<n; i++) pushread(L, tab, data, st);
+	int pushed = 0;
+	for(int i=1; i<=n; i++) pushed += pushread(L, tab, data, st, i==n);
 	lua_remove(L, tab);
 
-	printf("ld_unpack top: %d from %d+%d\n", lua_gettop(L), top, n);
-	return n;
+	printf("ld_unpack top: %d from %d+%d\n", lua_gettop(L), top, pushed);
+	return pushed;
 }
 
-static void pushread(lua_State* L, int idtab, const void** data, const void* st) {
+static int pushread(lua_State* L, int idtab, const void** data,
+	const void* st, int suball) {
+
 	idtab = lua_absindex(L, idtab);
 	ld_type t = read(ld_type);
 	switch(t) {
-	case LD_NIL: lua_pushnil(L); return;
-	case LD_REF: lua_geti(L, idtab, read(unsigned int)); return;
-	case LD_NUM: lua_pushnumber(L, read(lua_Number)); return;
-	case LD_INT: lua_pushinteger(L, read(lua_Integer)); return;
-	case LD_TRUE: lua_pushboolean(L, 1); return;
-	case LD_FALSE: lua_pushboolean(L, 0); return;
+	case LD_NIL: lua_pushnil(L); return 1;
+	case LD_REF: lua_geti(L, idtab, read(unsigned int)); return 1;
+	case LD_NUM: lua_pushnumber(L, read(lua_Number)); return 1;
+	case LD_INT: lua_pushinteger(L, read(lua_Integer)); return 1;
+	case LD_TRUE: lua_pushboolean(L, 1); return 1;
+	case LD_FALSE: lua_pushboolean(L, 0); return 1;
 	case LD_STRING: {
 		size_t sz = read(size_t);
 		lua_pushlstring(L, next(char, sz), sz);
-		return;
+		return 1;
 	};
 	case LD_FUNC: {
 		size_t sz = read(size_t);
@@ -56,25 +60,31 @@ static void pushread(lua_State* L, int idtab, const void** data, const void* st)
 			luaL_error(L, "loading function from pack!");
 		int nup = read(unsigned char);
 		for(int i=1; i<=nup; i++) {
-			pushread(L, idtab, data, st);
+			pushread(L, idtab, data, st, 0);
 			lua_setupvalue(L, -2, i);
 		}
-		return;
+		return 1;
 	};
 	case LD_TABLE: {
 		lua_Unsigned cnt = read(lua_Unsigned);
 		lua_createtable(L, 0, cnt);
-		pushread(L, idtab, data, st);
+		pushread(L, idtab, data, st, 0);
 		lua_setmetatable(L, -2);
 		for(int i=0; i<cnt; i++) {
-			pushread(L, idtab, data, st);
-			pushread(L, idtab, data, st);
+			pushread(L, idtab, data, st, 0);
+			pushread(L, idtab, data, st, 0);
 			lua_settable(L, -3);
 		}
-		return;
+		return 1;
+	};
+	case LD_SUB: {
+		void* subdata = read(void*);
+		int n = ld_unpack(L, subdata);
+		if(suball) lua_pop(L, n-1);
+		return suball ? n : 1;
 	};
 	default:
-		luaL_error(L, "unrecognized type %c (%d) at %p", t, t,
+		return luaL_error(L, "unrecognized type %c (%d) at %p", t, t,
 			*data - sizeof(ld_type) - st);
 	}
 }
