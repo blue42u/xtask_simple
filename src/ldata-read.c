@@ -19,7 +19,9 @@ int ld_unpack(lua_State* L, const void* space) {
 
 	int n = read(unsigned int);
 	lua_createtable(L, n, 0);
-	for(int i=0; i<n; i++) {
+	lua_pushglobaltable(L);
+	lua_seti(L, -2, 0);
+	for(int i=1; i<=n; i++) {
 		pushread(L, -1, data, st);
 		lua_seti(L, -2, i);
 	}

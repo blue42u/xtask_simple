@@ -58,7 +58,7 @@ static void write_large(lua_State* L, int idtab, unsigned int* id,
 	lua_settable(L, idtab);
 
 	lua_Unsigned cnt = 0;
-	size_t size;
+	size_t size = 0;
 	switch(t) {
 	case LUA_TTABLE:
 		if(lua_getmetatable(L, -1)) {
@@ -168,13 +168,17 @@ size_t ld_size(lua_State* L, int n, unsigned int* numobj) {
 
 	int top = lua_gettop(L);
 	lua_newtable(L);	// For storing ids
-	*numobj = 0;		// Next available id
+	lua_pushglobaltable(L);
+	lua_pushinteger(L, 0);
+	lua_settable(L, -3);
+	*numobj = 1;		// Next available id
 	for(int i=1; i <= n; i++) {
 		lua_pushvalue(L, i);
 		write_force(L, -2, numobj, &sz, addsz);
 		lua_pop(L, 1);
 	}
 	lua_pop(L, 1);
+	*numobj -= 1;
 	printf("ld_size top: %d from %d\n", lua_gettop(L), top);
 
 	return sz;
@@ -193,7 +197,10 @@ void ld_pack(lua_State* L, int n, unsigned int numobj, void* space) {
 
 	int top = lua_gettop(L);
 	lua_newtable(L);	// For storing ids
-	unsigned int id = 0;	// Next available id
+	lua_pushglobaltable(L);
+	lua_pushinteger(L, 0);
+	lua_settable(L, -3);
+	unsigned int id = 1;	// Next available id
 	for(int i=1; i <= n; i++) {
 		lua_pushvalue(L, i);
 		write_force(L, -2, &id, &space, writeout);
