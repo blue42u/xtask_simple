@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 static int msgh(lua_State* L) {
 	luaL_traceback(L, L, lua_tostring(L, -1), 0);
@@ -28,9 +29,9 @@ static void* ltaskfunc(void* state, void* vlt) {
 	return tail;
 }
 
-// .call([<fate>], <function>, <args|Deferred>...) -> Deferred
+// defer([<fate>], <function>, <args|Deferred>...) -> Deferred
 // Builds a new Deferred task, using the given arguments as a base.
-static int l_call(lua_State* L) {
+static int l_defer(lua_State* L) {
 	// Process the fate argument, to get it out of the way
 	int fate = 0;
 	const char* fatestr = lua_isstring(L, 1) ? lua_tostring(L, 1) : NULL;
@@ -52,9 +53,20 @@ static int l_call(lua_State* L) {
 	return 1;
 }
 
+int luaopen_xtask(lua_State*);
+
 static void* init() {
 	lua_State* L = luaL_newstate();
 	luaL_openlibs(L);
+
+	// Load XTask, but remove the ability to call.
+	lua_pushcfunction(L, luaopen_xtask);
+	lua_call(L, 0, 0);
+	luaL_getmetatable(L, "xtask_Deferred");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "__call");
+
+	lua_settop(L, 0);
 	return L;
 }
 
@@ -64,21 +76,31 @@ static void dest(void* vL) {
 }
 
 // Config := {
-//	[workers = <integer > 0>,]
+//	[workers = <integer | 'all'>,]
 //	[max_leafing = <integer>,]
 //	[max_tailing = <integer>,]
 //	[init = <function>,]
 //	[dest = <function>,]
 // }
 
-// .run(<Config>, <Deferred>) -> <retvalue>...
+// Deferred([<Config>]) -> <retvalue>...
 // Runs a Deferred task from outside the system. Inside should not use this.
 static int l_run(lua_State* L) {
-	lua_settop(L, 2);
+	xtask_config xc = {
+		.workers=sysconf(_SC_NPROCESSORS_ONLN),
+		.init=init, .dest=dest};
+	if(!lua_isnoneornil(L, 2)) {
+		if(lua_getfield(L, 2, "workers"))
+			xc.workers = lua_tointeger(L, -1);
+		if(lua_getfield(L, 2, "max_leafing"))
+			xc.max_leafing = lua_tointeger(L, -1);
+		if(lua_getfield(L, 2, "max_tailing"))
+			xc.max_tailing = lua_tointeger(L, -1);
 
-	xtask_config xc = {.workers=3, .init=init, .dest=dest};
+		lua_pop(L, 4);
+	}
 
-	ltask* lt = *(ltask**)luaL_checkudata(L, 2, "xtask_Deferred");
+	ltask* lt = *(ltask**)luaL_checkudata(L, 1, "xtask_Deferred");
 	void* out = NULL;
 	lt->out = &out;
 	xtask_run(lt, xc);
@@ -87,13 +109,15 @@ static int l_run(lua_State* L) {
 }
 
 luaL_Reg funcs[] = {
-	{"call", l_call},
-	{"run", l_run},
+	{"__call", l_run},
 	{NULL, NULL}
 };
 
 int luaopen_xtask(lua_State* L) {
 	luaL_newmetatable(L, "xtask_Deferred");
-	luaL_newlib(L, funcs);
-	return 1;
+	luaL_setfuncs(L, funcs, 0);
+
+	lua_pushcfunction(L, l_defer);
+	lua_setglobal(L, "defer");
+	return 0;
 }
