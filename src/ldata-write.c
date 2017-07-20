@@ -142,7 +142,7 @@ static void write_large(lua_State* L, int idtab, unsigned int* id, ltask** sub,
 		break;
 	}
 	case LUA_TUSERDATA: {
-		ltask* lt = luaL_testudata(L, -1, "xtask_Deferred");
+		ltask* lt = *(ltask**)luaL_testudata(L, -1, "xtask_Deferred");
 		if(lt) {
 			wf(L, LD(SUB), 1, ud);
 			if(sub) {
@@ -183,7 +183,8 @@ size_t ld_size(lua_State* L, int n, unsigned int* numobj) {
 	}
 	lua_pop(L, 1);
 	*numobj -= 1;
-	printf("ld_size top: %d from %d\n", lua_gettop(L), top);
+	if(lua_gettop(L) != top)
+		luaL_error(L, "ld_size top: %d != %d\n", lua_gettop(L), top);
 
 	return sz;
 }
@@ -220,5 +221,6 @@ void ld_pack(lua_State* L, int n, unsigned int numobj, void* space, ltask** sub)
 	}
 
 	lua_pop(L, 1);
-	printf("ld_pack top: %d from %d\n", lua_gettop(L), top);
+	if(lua_gettop(L) != top)
+		luaL_error(L, "ld_pack top: %d != %d\n", lua_gettop(L), top);
 }

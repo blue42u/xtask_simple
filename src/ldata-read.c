@@ -33,7 +33,9 @@ int ld_unpack(lua_State* L, const void* space) {
 	for(int i=1; i<=n; i++) pushed += pushread(L, tab, data, st, i==n);
 	lua_remove(L, tab);
 
-	printf("ld_unpack top: %d from %d+%d\n", lua_gettop(L), top, pushed);
+	if(lua_gettop(L) != top + pushed)
+		luaL_error(L, "ld_unpack top: %d != %d+%d\n", lua_gettop(L),
+			top, pushed);
 	return pushed;
 }
 
