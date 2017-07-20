@@ -12,7 +12,7 @@ static void pushread(lua_State* L, int idtab, const void** data, const void* st)
 
 int ld_unpack(lua_State* L, const void* space) {
 	// Header: unsigned int numobj;
-	// Footer: unsigned int numpush, pushids[numpush];
+	// Footer: unsigned int numpush; ld_sml pushes[numpush];
 	int top = lua_gettop(L);
 	const void* st = space;
 	void* data = &space;
@@ -28,7 +28,7 @@ int ld_unpack(lua_State* L, const void* space) {
 	int tab = lua_absindex(L, -1);
 
 	n = read(unsigned int);
-	for(int i=0; i<n; i++) lua_geti(L, tab, read(unsigned int));
+	for(int i=0; i<n; i++) pushread(L, tab, data, st);
 	lua_remove(L, tab);
 
 	printf("ld_unpack top: %d from %d+%d\n", lua_gettop(L), top, n);

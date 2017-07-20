@@ -137,25 +137,6 @@ static void write_large(lua_State* L, int idtab, unsigned int* id,
 	default: break;
 	}
 }
-static inline void write_force(lua_State* L, int idtab, unsigned int* id,
-	void* ud, lua_Writer wf) {
-	idtab = lua_absindex(L, idtab);
-
-	int t = lua_type(L, -1);
-	if(t == LUA_TNIL || t == LUA_TNUMBER || t == LUA_TBOOLEAN) {
-		lua_pushvalue(L, -1);
-		lua_gettable(L, idtab);
-		int done = lua_toboolean(L, -1);
-		lua_pop(L, 1);
-		if(done) return;
-
-		lua_pushvalue(L, -1);
-		lua_pushinteger(L, (*id)++);
-		lua_settable(L, idtab);
-
-		write_small(L, idtab, ud, wf);
-	} else write_large(L, idtab, id, ud, wf);
-}
 
 static int addsz(lua_State* L, const void* p, size_t sz, void* ud) {
 	*(size_t*)ud += sz;
@@ -163,8 +144,8 @@ static int addsz(lua_State* L, const void* p, size_t sz, void* ud) {
 }
 size_t ld_size(lua_State* L, int n, unsigned int* numobj) {
 	// Header: unsigned int numobj;
-	// Footer: unsigned int numpush, pushids[numpush];
-	size_t sz = sizeof(unsigned int)*(2+n);
+	// Footer: unsigned int numpush; ld_sml pushes[numpush];
+	size_t sz = sizeof(unsigned int)*2;
 
 	int top = lua_gettop(L);
 	lua_newtable(L);	// For storing ids
@@ -174,7 +155,8 @@ size_t ld_size(lua_State* L, int n, unsigned int* numobj) {
 	*numobj = 1;		// Next available id
 	for(int i=1; i <= n; i++) {
 		lua_pushvalue(L, i);
-		write_force(L, -2, numobj, &sz, addsz);
+		write_large(L, -2, numobj, &sz, addsz);
+		write_small(L, -2, &sz, addsz);
 		lua_pop(L, 1);
 	}
 	lua_pop(L, 1);
@@ -192,7 +174,7 @@ static int writeout(lua_State* L, const void* p, size_t sz, void* ud) {
 }
 void ld_pack(lua_State* L, int n, unsigned int numobj, void* space) {
 	// Header: unsigned int numobj;
-	// Footer: unsigned int numpush, pushids[numpush];
+	// Footer: unsigned int numpush; ld_sml pushes[numpush];
 	writeout(L, &numobj, sizeof(unsigned int), &space);
 
 	int top = lua_gettop(L);
@@ -203,7 +185,7 @@ void ld_pack(lua_State* L, int n, unsigned int numobj, void* space) {
 	unsigned int id = 1;	// Next available id
 	for(int i=1; i <= n; i++) {
 		lua_pushvalue(L, i);
-		write_force(L, -2, &id, &space, writeout);
+		write_large(L, -2, &id, &space, writeout);
 		lua_pop(L, 1);
 	}
 
@@ -211,9 +193,7 @@ void ld_pack(lua_State* L, int n, unsigned int numobj, void* space) {
 	writeout(L, &tmp, sizeof(unsigned int), &space);
 	for(int i=1; i <= n; i++) {
 		lua_pushvalue(L, i);
-		lua_gettable(L, -2);
-		tmp = lua_tointeger(L, -1);
-		writeout(L, &tmp, sizeof(unsigned int), &space);
+		write_small(L, -2, &space, writeout);
 		lua_pop(L, 1);
 	}
 
