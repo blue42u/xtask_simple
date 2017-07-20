@@ -17,7 +17,10 @@ static void* ltaskfunc(void* state, void* vlt) {
 	lua_settop(L, 0);
 	lua_pushcfunction(L, msgh);
 	int nargs = ld_unpack(L, lt->pack)-1;
-	lua_pcall(L, nargs, LUA_MULTRET, 1);
+	if(lua_pcall(L, nargs, LUA_MULTRET, 1) != LUA_OK) {
+		fprintf(stderr, "%s\n", lua_tostring(L, -1));
+		exit(1);
+	}
 	lua_remove(L, 1);
 
 	unsigned int nobj;
@@ -45,7 +48,7 @@ static int l_defer(lua_State* L) {
 	ltask* lt = malloc(sizeof(ltask) + ld_size(L, lua_gettop(L), &nobj));
 	ltask* children = NULL;
 	ld_pack(L, lua_gettop(L), nobj, lt->pack, &children);
-	lt->task = (xtask_task){ ltaskfunc, fate, NULL, children };
+	lt->task = (xtask_task){ ltaskfunc, fate, children, NULL };
 
 	// Create the resulting Deferred, and return it
 	*(ltask**)lua_newuserdata(L, sizeof(ltask*)) = lt;
