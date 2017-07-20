@@ -189,18 +189,24 @@ static int l_run(lua_State* L) {
 // .pack(...) -> <packedstring>
 static int l_pack(lua_State* L) {
 	int num = lua_gettop(L);
-	printf("Stack:\n");
-	size_t sz = ld_size(L, num);
+	unsigned int nobj;
+	size_t sz = ld_size(L, num, &nobj);
 	luaL_Buffer b;
-	ld_pack(L, num, luaL_buffinitsize(L, &b, sz));
+	ld_pack(L, num, nobj, luaL_buffinitsize(L, &b, sz));
 	luaL_pushresultsize(&b, sz);
 	return 1;
+}
+
+// .unpack(<packedstring>) -> ...
+static int l_unpack(lua_State* L) {
+	lua_settop(L, 1);
+	return ld_unpack(L, luaL_checkstring(L, 1));
 }
 
 luaL_Reg funcs[] = {
 	{"run", l_run},
 	{"pack", l_pack},
-	//{"unpack", l_unpack},
+	{"unpack", l_unpack},
 	{NULL, NULL}
 };
 
