@@ -10,17 +10,24 @@ typedef struct {
 	unsigned long long cnt;
 } queue;
 
+unsigned long long cnt = 0;
+
+void printout() {
+	fprintf(stderr, "TASKCOUNT %lld\n", cnt);
+}
+
 void* initQueue(xtask_config* cfg) {
 	cfg->workers = 1;	// We only support a single thread.
 	queue* q = malloc(sizeof(queue));
 	q->head = NULL;
 	q->cnt = 0;
+	if(cnt == 0) atexit(printout);
 	return q;
 }
 
 void freeQueue(void* vq) {
 	queue* q = vq;
-	fprintf(stderr, "TASKCOUNT %lld\n", q->cnt);
+	cnt += q->cnt;
 	free(q);
 }
 
