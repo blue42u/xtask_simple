@@ -32,7 +32,7 @@ static void write_small(lua_State* L, int idtab, void* ud,lua_Writer wf) {
 			lua_pushvalue(L, -1);
 			lua_gettable(L, idtab);
 			char buf[1+sizeof(unsigned int)] = {LD_REF};
-			*(lua_Integer*)(&buf[1]) = lua_tointeger(L, -1);
+			*(unsigned int*)(&buf[1]) = lua_tointeger(L, -1);
 			lua_pop(L, 1);
 			wf(L, buf, sizeof(buf), ud);
 			return;

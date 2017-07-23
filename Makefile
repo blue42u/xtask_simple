@@ -1,6 +1,6 @@
 #CC = gcc -O3
 #CC = icc -mmic -O3	#use this for to make an executable for Phi
-CC = clang -g #-O3
+CC = clang -O3
 CFLAGS = -std=gnu99 -Wall -fPIC -Iinclude/
 LDFLAGS = -lpthread
 

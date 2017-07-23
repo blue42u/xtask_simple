@@ -18,7 +18,7 @@ static void* ltaskfunc(void* state, void* vlt) {
 	lua_pushcfunction(L, msgh);
 	int nargs = ld_unpack(L, lt->pack)-1;
 	if(lua_pcall(L, nargs, LUA_MULTRET, 1) != LUA_OK) {
-		fprintf(stderr, "%s\n", lua_tostring(L, -1));
+		fprintf(stderr, "xtask: %s\n", lua_tostring(L, -1));
 		exit(1);
 	}
 	lua_remove(L, 1);
