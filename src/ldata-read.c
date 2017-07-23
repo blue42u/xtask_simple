@@ -9,7 +9,7 @@ static inline const void* read_size(size_t size, const void** space) {
 #define next(T, S) (T*)read_size(S, data)
 
 static int pushread(lua_State* L, int idtab, const void** data,
-	const void* st, int suball);
+	const void* st, int suball, int id);
 
 int ld_unpack(lua_State* L, const void* space) {
 	// Header: unsigned int numobj;
@@ -23,14 +23,14 @@ int ld_unpack(lua_State* L, const void* space) {
 	lua_pushglobaltable(L);
 	lua_seti(L, -2, 0);
 	for(int i=1; i<=n; i++) {
-		pushread(L, -1, data, st, 0);
+		pushread(L, -1, data, st, 0, i);
 		lua_seti(L, -2, i);
 	}
 	int tab = lua_absindex(L, -1);
 
 	n = read(unsigned int);
 	int pushed = 0;
-	for(int i=1; i<=n; i++) pushed += pushread(L, tab, data, st, i==n);
+	for(int i=1; i<=n; i++) pushed += pushread(L, tab, data, st, i==n, -1);
 	lua_remove(L, tab);
 
 	if(lua_gettop(L) != top + pushed)
@@ -40,7 +40,7 @@ int ld_unpack(lua_State* L, const void* space) {
 }
 
 static int pushread(lua_State* L, int idtab, const void** data,
-	const void* st, int suball) {
+	const void* st, int suball, int id) {
 
 	idtab = lua_absindex(L, idtab);
 	ld_type t = read(ld_type);
@@ -54,15 +54,23 @@ static int pushread(lua_State* L, int idtab, const void** data,
 	case LD_STRING: {
 		size_t sz = read(size_t);
 		lua_pushlstring(L, next(char, sz), sz);
+		if(id >= 0) {
+			lua_pushvalue(L, -1);
+			lua_seti(L, idtab, id);
+		}
 		return 1;
 	};
 	case LD_FUNC: {
 		size_t sz = read(size_t);
 		if(luaL_loadbuffer(L, next(char, sz), sz, "Task") != LUA_OK)
 			luaL_error(L, "loading function from pack!");
+		if(id >= 0) {
+			lua_pushvalue(L, -1);
+			lua_seti(L, idtab, id);
+		}
 		int nup = read(unsigned char);
 		for(int i=1; i<=nup; i++) {
-			pushread(L, idtab, data, st, 0);
+			pushread(L, idtab, data, st, 0, -1);
 			lua_setupvalue(L, -2, i);
 		}
 		return 1;
@@ -70,11 +78,15 @@ static int pushread(lua_State* L, int idtab, const void** data,
 	case LD_TABLE: {
 		lua_Unsigned cnt = read(lua_Unsigned);
 		lua_createtable(L, 0, cnt);
-		pushread(L, idtab, data, st, 0);
+		if(id >= 0) {
+			lua_pushvalue(L, -1);
+			lua_seti(L, idtab, id);
+		}
+		pushread(L, idtab, data, st, 0, -1);
 		lua_setmetatable(L, -2);
 		for(int i=0; i<cnt; i++) {
-			pushread(L, idtab, data, st, 0);
-			pushread(L, idtab, data, st, 0);
+			pushread(L, idtab, data, st, 0, -1);
+			pushread(L, idtab, data, st, 0, -1);
 			lua_settable(L, -3);
 		}
 		return 1;
