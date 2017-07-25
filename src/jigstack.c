@@ -43,12 +43,14 @@ typedef struct aftern {
 typedef struct {
 	aftern* ans;
 	int ind;
+	int id;
 } pushstuff;
 
 void* prepush(void* vq, int id, xtask_task* prev, int nr, int nt, int nl) {
 	pushstuff* ps = malloc(sizeof(pushstuff));
 	ps->ans = malloc((nt-nl+1)*sizeof(aftern));
 	ps->ind = 1;
+	ps->id = id;
 
 	sem_init(&ps->ans[0].cnt, 0, nr-1);
 	ps->ans[0].size = nt-nl+1;
@@ -72,13 +74,14 @@ void leafpush(void* vq, void* vps, int id, xtask_task* t, xtask_task* p) {
 	Q* q = vq;
 	pushstuff* ps = vps;
 
-	if((++id) == q->size) id = 0;
 	t->child = p ? p->sibling : &ps->ans[0];
 
-	sem_wait(&q->locks[id]);
-	t->sibling = q->heads[id];
-	q->heads[id] = t;
-	sem_post(&q->locks[id]);
+	sem_wait(&q->locks[ps->id]);
+	t->sibling = q->heads[ps->id];
+	q->heads[ps->id] = t;
+	sem_post(&q->locks[ps->id]);
+
+	if((++(ps->id)) == q->size) ps->id = 0;
 }
 
 void postpush(void* vq, void* vps) { free(vps); }
@@ -95,7 +98,8 @@ int leaf(void* vq, int tid, xtask_task prev) {
 			an = next;
 		} else {
 			xtask_task d = {NULL, 0, NULL, an->t->child};
-			leafpush(vq, NULL, tid, an->t, &d);
+			pushstuff ps = {NULL, 0, tid};
+			leafpush(vq, &ps, tid, an->t, &d);
 			return 0;
 		}
 	}
@@ -107,14 +111,14 @@ xtask_task* pop(void* vq, int id) {
 	// Walk our way around the rim, fitting in with the jig.
 	xtask_task* t;
 	while(1) {
-		for(int i=id; i >= 0; i--) {
+		for(int i=id; i < q->size; i++) {
 			sem_wait(&q->locks[i]);
 			t = q->heads[i];
 			if(t) q->heads[i] = t->sibling;
 			sem_post(&q->locks[i]);
 			if(t) return t;
 		}
-		for(int i=q->size-1; i > id; i--) {
+		for(int i=0; i < id; i++) {
 			sem_wait(&q->locks[i]);
 			t = q->heads[i];
 			if(t) q->heads[i] = t->sibling;
