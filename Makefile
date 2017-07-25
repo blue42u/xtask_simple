@@ -4,9 +4,7 @@ CC = clang -O3
 CFLAGS = -std=gnu99 -Wall -fPIC -Iinclude/
 LDFLAGS = -lpthread
 
-all: libxtask-counter.a libxtask-oneatom.a \
-	libxtask-jigstack.a libxtask-atomstack.a \
-	xtask.so
+all: libxtask-counter.a libxtask-jigstack.a xtask.so
 
 libxtask-%.a: build/xdata.o build/xtask.o build/%.o
 	$(AR) rc $@ $^

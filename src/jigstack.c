@@ -40,53 +40,48 @@ typedef struct aftern {
 	};
 } aftern;
 
-static void rpush(Q* q, int id, xtask_task* tt, aftern* an, aftern* ans, int* ind) {
-	if(tt->child) {
-		int cnt = 0;
-		for(xtask_task* c = tt->child; c; c = c->sibling) cnt++;
+typedef struct {
+	aftern* ans;
+	int ind;
+} pushstuff;
 
-		aftern* myan = &ans[(*ind)++];
-		sem_init(&myan->cnt, 0, cnt-1);
-		myan->size = 0;
-		myan->t = tt;
+void* prepush(void* vq, int id, xtask_task* prev, int nr, int nt, int nl) {
+	pushstuff* ps = malloc(sizeof(pushstuff));
+	ps->ans = malloc((nt-nl+1)*sizeof(aftern));
+	ps->ind = 1;
 
-		xtask_task* c = tt->child;
-		tt->child = an;
-		while(c) {
-			xtask_task* next = c->sibling;
-			rpush(q, id, c, myan, ans, ind);
-			c = next;
-		}
-	} else {
-		id = (id+1);
-		if(id == q->size) id = 0;
+	sem_init(&ps->ans[0].cnt, 0, nr-1);
+	ps->ans[0].size = nt-nl+1;
+	ps->ans[0].an = prev ? prev->child : NULL;
 
-		tt->child = an;
-
-		sem_wait(&q->locks[id]);
-		tt->sibling = q->heads[id];
-		q->heads[id] = tt;
-		sem_post(&q->locks[id]);
-	}
+	return ps;
 }
 
-void push(void* vq, int tid, xtask_task* tt, xtask_task prev) {
-	int size = rcount(tt) + 1;
-	aftern* ans = malloc(size*sizeof(aftern));
+void midpush(void* vq, void* vps, int id, xtask_task* t, xtask_task* p, int nc) {
+	pushstuff* ps = vps;
+	aftern* myan = &ps->ans[ps->ind++];
+	sem_init(&myan->cnt, 0, nc-1);
+	myan->size = 0;
+	myan->t = t;
 
-	int cnt = 0;
-	for(xtask_task* s = tt; s; s = s->sibling) cnt++;
-	sem_init(&ans[0].cnt, 0, cnt-1);
-	ans[0].size = size;
-	ans[0].an = prev.child;
-
-	int ind = 1;
-	while(tt) {
-		xtask_task* next = tt->sibling;
-		rpush(vq, tid, tt, &ans[0], ans, &ind);
-		tt = next;
-	}
+	t->child = p ? p->sibling : &ps->ans[0];
+	t->sibling = myan;
 }
+
+void leafpush(void* vq, void* vps, int id, xtask_task* t, xtask_task* p) {
+	Q* q = vq;
+	pushstuff* ps = vps;
+
+	if((++id) == q->size) id = 0;
+	t->child = p ? p->sibling : &ps->ans[0];
+
+	sem_wait(&q->locks[id]);
+	t->sibling = q->heads[id];
+	q->heads[id] = t;
+	sem_post(&q->locks[id]);
+}
+
+void postpush(void* vq, void* vps) { free(vps); }
 
 int leaf(void* vq, int tid, xtask_task prev) {
 	aftern* an = prev.child;
@@ -99,9 +94,8 @@ int leaf(void* vq, int tid, xtask_task prev) {
 			free(an);
 			an = next;
 		} else {
-			aftern* next = an->t->child;
-			an->t->sibling = an->t->child = NULL;
-			rpush(vq, tid, an->t, next, NULL, NULL);
+			xtask_task d = {NULL, 0, NULL, an->t->child};
+			leafpush(vq, NULL, tid, an->t, &d);
 			return 0;
 		}
 	}

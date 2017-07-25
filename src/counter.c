@@ -31,29 +31,22 @@ void freeQueue(void* vq) {
 	free(q);
 }
 
-static void rpush(queue* q, xtask_task* tt, xtask_task* p) {
-	if(tt->child) {
-		int cnt = 0;
-		for(xtask_task* c = tt->child; c; cnt++) {
-			xtask_task* next = c->sibling;
-			rpush(q, c, tt);
-			c = next;
-		}
-		tt->fate = cnt;
-	} else {
-		q->cnt++;
-		tt->sibling = q->head;
-		q->head = tt;
-	}
-	tt->child = p;
+void* prepush(void* q, int i, xtask_task* p, int r, int t, int l) {
+	return p ? p->child : NULL;
+}
+void postpush(void* q, void* pp) {}
+
+void midpush(void* vq, void* vpp, int id, xtask_task* t, xtask_task* p, int nc) {
+	t->fate = nc;
+	t->child = p ? p : vpp;
 }
 
-void push(void* vq, int tid, xtask_task* tt, xtask_task prev) {
-	while(tt) {
-		xtask_task* next = tt->sibling;
-		rpush(vq, tt, prev.child);
-		tt = next;
-	}
+void leafpush(void* vq, void* vpp, int id, xtask_task* t, xtask_task* p) {
+	queue* q = vq;
+	q->cnt++;
+	t->sibling = q->head;
+	q->head = t;
+	t->child = p ? p : vpp;
 }
 
 int leaf(void* vq, int tid, xtask_task prev) {
@@ -64,7 +57,7 @@ int leaf(void* vq, int tid, xtask_task prev) {
 	xtask_task* p = t->child;
 	t->child = NULL;
 	t->sibling = NULL;
-	rpush(vq, t, p);
+	leafpush(vq, NULL, 0, t, p);
 	return 0;
 }
 

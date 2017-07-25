@@ -15,6 +15,27 @@ struct workerdata {
 	sem_t* finished;
 };
 
+static void rcount(xtask_task* tt, int* n, int* l) {
+	if(!tt->child) (*l)++;
+	(*n)++;
+	for(xtask_task* c = tt->child; c; c = c->sibling)
+		rcount(c, n, l);
+}
+
+static void rpush(void* q, void* pp, int id, xtask_task* tt, xtask_task* p) {
+	while(tt) {
+		xtask_task* next = tt->sibling;
+		if(tt->child) {
+			xtask_task* c = tt->child;
+			int cnt = 0;
+			for(xtask_task* cs = c; cs; cs = cs->sibling) cnt++;
+			midpush(q, pp, id, tt, p, cnt);
+			rpush(q, pp, id, c, tt);
+		} else leafpush(q, pp, id, tt, p);
+		tt = next;
+	}
+}
+
 static void* worker(void* vcfg) {
 	struct workerdata* wd = vcfg;
 
@@ -29,8 +50,14 @@ static void* worker(void* vcfg) {
 		xtask_task orig = *t;
 		xtask_task* tt = t->func(state, t);
 
-		if(tt) push(wd->q, wd->id, tt, orig);
-		else if(leaf(wd->q, wd->id, orig)) sem_post(wd->finished);
+		if(tt) {
+			int r = 0, n = 0, l = 0;
+			for(xtask_task* t = tt; t; t = t->sibling, r++)
+				rcount(t, &n, &l);
+			void* pp = prepush(wd->q, wd->id, &orig, r, n, l);
+			rpush(wd->q, pp, wd->id, tt, NULL);
+			postpush(wd->q, pp);
+		} else if(leaf(wd->q, wd->id, orig)) sem_post(wd->finished);
 	}
 
 	pthread_cleanup_pop(1);
@@ -38,9 +65,15 @@ static void* worker(void* vcfg) {
 }
 
 void xtask_run(void* tt, xtask_config cfg) {
-	// Queue up the first (and only, kind of) task-tree
 	void* q = initQueue(&cfg);
-	push(q, 0, tt, (xtask_task){NULL, 0, NULL, NULL});
+
+	// Queue up the task-tree.
+	int r = 0, n = 0, l = 0;
+	for(xtask_task* t = tt; t; t = t->sibling, r++)
+		rcount(t, &n, &l);
+	void* pp = prepush(q, 0, NULL, r, n, l);
+	rpush(q, pp, 0, tt, NULL);
+	postpush(q, pp);
 
 	// Setup the ending signal
 	sem_t finished;
