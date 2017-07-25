@@ -8,14 +8,17 @@ all: libxtask-counter.a libxtask-oneatom.a \
 	libxtask-jigstack.a libxtask-atomstack.a \
 	xtask.so
 
-libxtask-%.a: xdata.o xtask.o %.o
+libxtask-%.a: build/xdata.o build/xtask.o build/%.o
 	$(AR) rc $@ $^
 
-xtask.so: lua.o ldata-write.o ldata-read.o libxtask-jigstack.a
+xtask.so: build/lua.o build/ldata-write.o build/ldata-read.o libxtask-jigstack.a
 	$(CC) $^ -shared -o $@ $(LDFLAGS)
 
-%.o: src/%.c
+build/%.o: src/%.c build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build:
+	mkdir build
+
 clean:
-	rm -f *.o *.a *.so
+	rm -rf build *.a *.so
